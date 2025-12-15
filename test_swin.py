@@ -189,6 +189,16 @@ def setup_dataset(config, weather_condition=None):
     return Dataset
 
 
+def _prepare_inputs_for_mode(images, lidar, mode):
+    """Prepare inputs for model call based on CLI mode (keeps behavior consistent with TestingEngine)."""
+    if mode == 'rgb':
+        return images, images
+    elif mode == 'lidar':
+        return lidar, lidar
+    else:  # cross_fusion
+        return images, lidar
+
+
 def test_model_on_weather(config, model, device, weather_condition, checkpoint_path):
     """Test model on a specific weather condition."""
     print(f"\nTesting on {weather_condition}...")
@@ -231,12 +241,8 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
 
             # Forward pass
             start_time = time.time()
-            if config['CLI']['mode'] == 'rgb':
-                _, outputs = model(images, torch.zeros_like(images), modal='rgb')
-            elif config['CLI']['mode'] == 'lidar':
-                _, outputs = model(torch.zeros_like(images), images, modal='lidar')
-            else:  # cross_fusion
-                _, outputs = model(images, lidar, modal='cross_fusion')
+            rgb_input, lidar_input = _prepare_inputs_for_mode(images, lidar, config['CLI']['mode'])
+            _, outputs = model(rgb_input, lidar_input, modal=config['CLI']['mode'])
             end_time = time.time()
             total_time += (end_time - start_time)
 
