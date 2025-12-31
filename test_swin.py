@@ -17,7 +17,7 @@ from tqdm import tqdm
 from core.advanced_model_builder import AdvancedModelBuilder
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
-from utils.helpers import relabel_annotation, get_model_path
+from utils.helpers import relabel_annotation, get_model_path, sanitize_for_json
 from integrations.vision_service import send_test_results_from_file
 
 
@@ -363,7 +363,7 @@ def main():
         "epoch": epoch_num,
         "epoch_uuid": epoch_uuid,
         "test_uuid": str(uuid.uuid4()),
-        "test_results": all_results
+        "test_results": sanitize_for_json(all_results)
     }
 
     with open(output_path, 'w') as f:

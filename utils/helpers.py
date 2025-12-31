@@ -231,3 +231,22 @@ def create_config_snapshot():
     destination_file = f'config_{timestamp}.json'
     shutil.copy(source_file, destination_file)
     print(f'Config snapshot created {destination_file}')
+
+
+def sanitize_for_json(data):
+    """Recursively sanitize data for JSON serialization (handle NaN/Inf)."""
+    if isinstance(data, dict):
+        return {k: sanitize_for_json(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_for_json(v) for v in data]
+    elif isinstance(data, float):
+        if np.isnan(data) or np.isinf(data):
+            return 0.0
+        return data
+    elif isinstance(data, (np.float32, np.float64)):
+        if np.isnan(data) or np.isinf(data):
+            return 0.0
+        return float(data)
+    elif isinstance(data, (np.int32, np.int64)):
+        return int(data)
+    return data

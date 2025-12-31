@@ -122,7 +122,7 @@ class MetricsCalculator:
     def compute_epoch_metrics(self, accumulators, total_loss, num_batches):
         """Compute final metrics for an epoch."""
         # IoU and metrics are already in correct order (class 1, 2, 3, ... -> indices 0, 1, 2, ...)
-        epoch_IoU = accumulators['overlap'] / accumulators['union']
+        epoch_IoU = accumulators['overlap'] / (accumulators['union'] + 1e-6)
         
         # Additional metrics
         precision = accumulators['overlap'] / (accumulators['pred'] + 1e-6)

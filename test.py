@@ -19,7 +19,7 @@ from core.metrics_calculator import MetricsCalculator
 from core.testing_engine import TestingEngine
 from utils.metrics import find_overlap_exclude_bg_ignore
 from integrations.vision_service import send_test_results_from_file
-from utils.helpers import get_model_path
+from utils.helpers import get_model_path, sanitize_for_json
 
 
 def calculate_num_classes(config):
@@ -96,7 +96,7 @@ def save_test_results(config, all_results, epoch_num, epoch_uuid, test_uuid):
     
     # Save to file
     with open(filepath, 'w') as f:
-        json.dump(combined_results, f, indent=2)
+        json.dump(sanitize_for_json(combined_results), f, indent=2)
     
     print(f'All test results saved to: {filepath}')
     if epoch_uuid:
