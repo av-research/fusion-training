@@ -130,7 +130,10 @@ class MetricsCalculator:
         f1 = 2 * precision * recall / (precision + recall + 1e-6)
         
         # Average loss
-        epoch_loss = total_loss / num_batches
+        if num_batches > 0:
+            epoch_loss = total_loss / num_batches
+        else:
+            epoch_loss = 0.0
         
         return {
             'epoch_IoU': epoch_IoU,

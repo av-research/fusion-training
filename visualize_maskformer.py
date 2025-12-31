@@ -44,7 +44,7 @@ def get_lidar_path(cam_path, dataset_name):
     if dataset_name == 'zod':
         return cam_path.replace('camera', 'lidar_png')
     else:  # waymo
-        return cam_path.replace('camera/', 'lidar/').replace('.png', '.pkl')
+        return cam_path.replace('camera/', 'lidar_png/')
 
 
 def prepare_model_inputs(rgb, lidar, modality):
