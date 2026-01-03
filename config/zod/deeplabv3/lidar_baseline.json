@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD DeepLabV3+ LiDAR-only Baseline",
-    "tags": ["ZOD", "Local", "DeepLabV3+", "LiDAR", "Baseline"],
+    "tags": ["ZOD", "DeepLabV3+", "LiDAR", "Baseline"],
     "CLI": {"backbone": "deeplabv3plus", "mode": "lidar", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

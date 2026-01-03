@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD CLFTv2-Base Cross-Fusion",
-    "tags": ["ZOD", "Local", "CLFTv2-SwinV2-Base", "CrossFusion"],
+    "tags": ["ZOD", "CLFTv2-SwinV2-Base", "CrossFusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

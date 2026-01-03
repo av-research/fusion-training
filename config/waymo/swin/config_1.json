@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo CLFTv2-Tiny RGB-Only",
-    "tags": ["Waymo", "Local", "CLFTv2-SwinV2-Tiny", "RGB"],
+    "tags": ["Waymo", "CLFTv2-SwinV2-Tiny", "RGB"],
     "CLI": {"backbone": "swin_fusion", "mode": "rgb", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

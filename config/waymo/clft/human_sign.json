@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo RGB Hybrid - Human + Sign",
-    "tags": ["Waymo", "Local", "CLFT-Hybrid", "RGB", "Human-Sign", "Specialization"],
+    "tags": ["Waymo", "CLFT-Hybrid", "RGB", "Human-Sign", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

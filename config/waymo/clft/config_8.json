@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo Fusion Hybrid",
-    "tags": ["Waymo", "Local", "CLFT-Hybrid", "Fusion"],
+    "tags": ["Waymo", "CLFT-Hybrid", "Fusion"],
     "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

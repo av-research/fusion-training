@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo RGB Hybrid - Vehicle Specialization",
-    "tags": ["Waymo", "Local", "CLFT-Hybrid", "RGB", "Vehicle-Only", "Specialization"],
+    "tags": ["Waymo", "CLFT-Hybrid", "RGB", "Vehicle-Only", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo RGB Large",
-    "tags": ["Waymo", "Local", "CLFT-Large", "RGB"],
+    "tags": ["Waymo", "CLFT-Large", "RGB"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

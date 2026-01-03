@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo CLFTv2-Tiny Cross-Fusion",
-    "tags": ["Waymo", "Local", "CLFTv2-SwinV2-Tiny", "CrossFusion"],
+    "tags": ["Waymo", "CLFTv2-SwinV2-Tiny", "CrossFusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

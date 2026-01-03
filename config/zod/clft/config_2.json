@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD RGB Hybrid",
-    "tags": ["ZOD", "Local", "CLFT-Hybrid", "RGB"],
+    "tags": ["ZOD", "CLFT-Hybrid", "RGB"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

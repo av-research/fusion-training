@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD CLFTv2-Tiny LiDAR-Only",
-    "tags": ["ZOD", "Local", "CLFTv2-SwinV2-Tiny", "LiDAR"],
+    "tags": ["ZOD", "CLFTv2-SwinV2-Tiny", "LiDAR"],
     "CLI": {"backbone": "swin_fusion", "mode": "lidar", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

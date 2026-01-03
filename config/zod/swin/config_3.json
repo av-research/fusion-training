@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD CLFTv2-Large RGB-Only",
-    "tags": ["ZOD", "Local", "CLFTv2-SwinV2-Large", "RGB"],
+    "tags": ["ZOD", "CLFTv2-SwinV2-Large", "RGB"],
     "CLI": {"backbone": "swin_fusion", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

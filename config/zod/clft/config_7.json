@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD Fusion Base",
-    "tags": ["ZOD", "Local", "CLFT-Base", "Fusion"],
+    "tags": ["ZOD", "CLFT-Base", "Fusion"],
     "CLI": {"backbone": "clft", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

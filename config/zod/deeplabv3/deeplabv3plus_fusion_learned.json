@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD DeepLabV3+ Late Fusion (Learned Weights)",
-    "tags": ["ZOD", "Local", "DeepLabV3+", "Fusion", "Baseline"],
+    "tags": ["ZOD", "DeepLabV3+", "Fusion", "Baseline"],
     "CLI": {"backbone": "deeplabv3plus", "mode": "fusion", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

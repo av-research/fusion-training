@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo Lidar Large",
-    "tags": ["Waymo", "Local", "CLFT-Large", "Lidar"],
+    "tags": ["Waymo", "CLFT-Large", "Lidar"],
     "CLI": {"backbone": "clft", "mode": "lidar", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

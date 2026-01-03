@@ -129,14 +129,22 @@ def image_overlay(image, segmented_image):
 
     return overlay.astype(np.uint8)
 
-def get_model_path(config):
-    model_path = config['General']['model_path']
+def get_all_checkpoint_paths(config):
+    """Get all checkpoint file paths, sorted by epoch number."""
+    import glob
+    import os
+    
+    # If model path is specified, return just that one
+    model_path = config['General'].get('model_path', '')
     if model_path != '':
-        return config['General']['model_path']
-    # If model path not specified then take latest checkpoint
-    files = glob.glob(config['Log']['logdir']+'checkpoints/*.pth')
+        return [model_path]
+    
+    # Otherwise, find all checkpoints
+    checkpoint_dir = os.path.join(config['Log']['logdir'], 'checkpoints')
+    files = glob.glob(os.path.join(checkpoint_dir, '*.pth'))
     if len(files) == 0:
-        return False
+        return []
+    
     # Sort by checkpoint number (not by file creation time which can be unreliable)
     def get_checkpoint_num(filepath):
         try:
@@ -154,8 +162,17 @@ def get_model_path(config):
         except:
             return 0
     
-    latest_file = max(files, key=get_checkpoint_num)
-    return latest_file
+    # Sort files by epoch number
+    sorted_files = sorted(files, key=get_checkpoint_num)
+    return sorted_files
+
+def get_model_path(config):
+    """Get the latest checkpoint file path."""
+    checkpoint_paths = get_all_checkpoint_paths(config)
+    if not checkpoint_paths:
+        return False
+    # Return the latest checkpoint (last in sorted list)
+    return checkpoint_paths[-1]
 
 def save_model_dict(config, epoch, model, optimizer, epoch_uuid=None):
     creat_dir(config)

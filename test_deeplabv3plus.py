@@ -18,8 +18,8 @@ from tqdm import tqdm
 from models.deeplabv3plus import build_deeplabv3plus
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
-from utils.helpers import get_model_path, sanitize_for_json
-from integrations.vision_service import send_test_results_from_file
+from utils.helpers import get_all_checkpoint_paths, sanitize_for_json
+from utils.test_aggregator import collect_checkpoint_results, calculate_aggregated_statistics, save_and_upload_aggregated_results
 
 
 def calculate_num_classes(config):
@@ -361,6 +361,89 @@ def save_test_results(config, all_results, epoch_num, epoch_uuid, test_uuid):
     return filepath
 
 
+def test_single_checkpoint(checkpoint_path, config, device, weather_conditions, num_classes, num_eval_classes, modality, fusion_type, is_fusion):
+    """
+    Test a single checkpoint on all weather conditions.
+
+    Args:
+        checkpoint_path: Path to checkpoint file
+        config: Configuration dict
+        device: Torch device
+        weather_conditions: List of weather condition names and file tuples
+        num_classes: Number of classes
+        num_eval_classes: Number of evaluation classes
+        modality: Modality (rgb, lidar, fusion)
+        fusion_type: Fusion type
+        is_fusion: Whether it's fusion mode
+
+    Returns:
+        Dict with results for each weather condition
+    """
+    # Build model for this checkpoint
+    model = build_deeplabv3plus(
+        num_classes=num_classes,
+        mode=modality,
+        fusion_type=fusion_type,
+        pretrained=False  # Don't load ImageNet weights for testing
+    )
+    model.to(device)
+
+    print(f"Loading checkpoint: {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    # Setup metrics calculator
+    find_overlap_func = find_overlap_exclude_bg_ignore
+    metrics_calc = MetricsCalculator(config, num_eval_classes, find_overlap_func)
+
+    # Setup datasets
+    Dataset = setup_dataset(config)
+
+    # Get class names for display
+    train_classes = config['Dataset']['train_classes']
+    class_names = [cls['name'] for cls in train_classes if cls['index'] > 0]
+
+    # Dictionary to collect all results
+    checkpoint_results = {}
+
+    # Define test data path and files
+    test_data_path = config['CLI']['path']
+    test_data_files = [
+        ('day_fair', 'test_day_fair.txt'),
+        ('day_rain', 'test_day_rain.txt'),
+        ('night_fair', 'test_night_fair.txt'),
+        ('night_rain', 'test_night_rain.txt'),
+        ('snow', 'test_snow.txt')
+    ]
+
+    # Test on each weather condition
+    for condition_key, filename in test_data_files:
+        filepath = os.path.join(test_data_path, filename)
+        if not os.path.exists(filepath):
+            print(f"\nSkipping {condition_key}: file not found ({filepath})")
+            continue
+
+        condition_name = condition_key.replace('_', ' ').title()
+        print(f"\nTesting on {condition_name}...")
+        print(f"Using file: {filepath}")
+
+        test_data = Dataset(config, 'test', filepath)
+        test_dataloader = DataLoader(
+            test_data,
+            batch_size=config['General']['batch_size'],
+            shuffle=False,
+            pin_memory=True,
+            num_workers=4,
+            persistent_workers=True
+        )
+
+        test_metrics = test_model(model, test_dataloader, metrics_calc, device, config, num_classes, modality, is_fusion)
+        print_metrics(test_metrics, condition_name, class_names)
+        checkpoint_results[condition_key] = convert_metrics_to_serializable(test_metrics, config, num_eval_classes)
+
+    return checkpoint_results
+
+
 def main():
     parser = argparse.ArgumentParser(description='Test DeepLabV3+ Model')
     parser.add_argument('-c', '--config', type=str, required=True,
@@ -388,91 +471,39 @@ def main():
     fusion_type = config['DeepLabV3Plus'].get('fusion_type', 'learned')
     is_fusion = modality == 'fusion'
     
-    # Build model
-    model = build_deeplabv3plus(
-        num_classes=num_classes,
-        mode=modality,
-        fusion_type=fusion_type,
-        pretrained=False  # Don't load ImageNet weights for testing
-    )
-    model.to(device)
-    
-    # Load checkpoint
+    # Get all checkpoint paths
     if args.checkpoint:
-        checkpoint_path = args.checkpoint
+        checkpoint_paths = [args.checkpoint]
     else:
-        checkpoint_path = get_model_path(config)
-        if not checkpoint_path:
-            print("Error: No checkpoint found. Please specify --checkpoint")
+        checkpoint_paths = get_all_checkpoint_paths(config)
+        if not checkpoint_paths:
+            print("Error: No checkpoints found. Please train the model first.")
             return
     
-    print(f"Loading checkpoint: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
+    print(f"Found {len(checkpoint_paths)} checkpoints to test")
     
-    # Extract epoch info from checkpoint
-    epoch_num, epoch_uuid = extract_epoch_info(checkpoint_path)
-    test_uuid = str(uuid.uuid4())
+    # Weather conditions to test
+    weather_conditions = ['day_fair', 'day_rain', 'night_fair', 'night_rain', 'snow']
+    eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
     
-    # Setup metrics calculator
-    find_overlap_func = find_overlap_exclude_bg_ignore
-    metrics_calc = MetricsCalculator(config, num_eval_classes, find_overlap_func)
+    # Test all checkpoints and collect results
+    all_checkpoint_results = collect_checkpoint_results(
+        checkpoint_paths, test_single_checkpoint, config, device, weather_conditions, 
+        num_classes, num_eval_classes, modality, fusion_type, is_fusion
+    )
     
-    # Setup datasets
-    Dataset = setup_dataset(config)
+    # Calculate aggregated statistics
+    aggregated_results = calculate_aggregated_statistics(
+        all_checkpoint_results, weather_conditions, eval_classes
+    )
     
-    # Get class names for display
-    train_classes = config['Dataset']['train_classes']
-    class_names = [cls['name'] for cls in train_classes if cls['index'] > 0]
+    # Save and upload aggregated results
+    save_and_upload_aggregated_results(
+        config, checkpoint_paths, aggregated_results, all_checkpoint_results
+    )
     
-    # Dictionary to collect all results
-    all_results = {}
-    
-    # Define test data path and files
-    test_data_path = config['CLI']['path']
-    test_data_files = [
-        ('day_fair', 'test_day_fair.txt'),
-        ('day_rain', 'test_day_rain.txt'),
-        ('night_fair', 'test_night_fair.txt'),
-        ('night_rain', 'test_night_rain.txt'),
-        ('snow', 'test_snow.txt')
-    ]
-    
-    # Test on each weather condition
-    for condition_key, filename in test_data_files:
-        filepath = os.path.join(test_data_path, filename)
-        if not os.path.exists(filepath):
-            print(f"\nSkipping {condition_key}: file not found ({filepath})")
-            continue
-        
-        condition_name = condition_key.replace('_', ' ').title()
-        print(f"\nTesting on {condition_name}...")
-        print(f"Using file: {filepath}")
-        
-        test_data = Dataset(config, 'test', filepath)
-        test_dataloader = DataLoader(
-            test_data,
-            batch_size=config['General']['batch_size'],
-            shuffle=False,
-            pin_memory=True,
-            num_workers=4,
-            persistent_workers=True
-        )
-        
-        test_metrics = test_model(model, test_dataloader, metrics_calc, device, config, num_classes, modality, is_fusion)
-        print_metrics(test_metrics, condition_name, class_names)
-        all_results[condition_key] = convert_metrics_to_serializable(test_metrics, config, num_eval_classes)
-    
-    # Save all results to JSON
-    results_file = save_test_results(config, all_results, epoch_num, epoch_uuid, test_uuid)
-    
-    # Upload to vision service
-    print("\nUploading test results to vision service...")
-    upload_success = send_test_results_from_file(results_file)
-    if upload_success:
-        print("✅ Test results successfully uploaded to vision service")
-    else:
-        print("❌ Failed to upload test results to vision service")
+    print(f"\n{'='*50}")
+    print(f"Completed testing all {len(checkpoint_paths)} checkpoints and calculated aggregated statistics")
 
 
 if __name__ == '__main__':

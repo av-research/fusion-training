@@ -17,8 +17,8 @@ from tqdm import tqdm
 from core.advanced_model_builder import AdvancedModelBuilder
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
-from utils.helpers import relabel_annotation, get_model_path, sanitize_for_json
-from integrations.vision_service import send_test_results_from_file
+from utils.helpers import relabel_annotation, get_all_checkpoint_paths, sanitize_for_json
+from utils.test_aggregator import collect_checkpoint_results, calculate_aggregated_statistics, save_and_upload_aggregated_results
 
 
 def _store_predictions_for_ap(output_seg, anno, all_predictions, all_targets, eval_classes, config):
@@ -272,6 +272,14 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
     # Print results for this weather condition
     print(f"\n{weather_condition} Results:")
     eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
+    print(f"mIoU: {final_metrics['iou'].mean().item():.4f}")
+    print(f"Mean Precision: {final_metrics['precision'].mean().item():.4f}")
+    print(f"Mean Recall: {final_metrics['recall'].mean().item():.4f}")
+    print(f"Mean F1: {final_metrics['f1'].mean().item():.4f}")
+    print(f"Mean AP: {np.mean([results[cls]['ap'] for cls in eval_classes]):.4f}")
+    print(f"FPS: {results['inference_time']['throughput_fps']:.2f}")
+    
+    print("\nPer-class Metrics:")
     for i, cls_name in enumerate(eval_classes):
         print(f"  {cls_name} IoU: {final_metrics['iou'][i].item():.4f}")
 
@@ -304,6 +312,38 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
     return results
 
 
+def test_single_checkpoint(checkpoint_path, config, device, weather_conditions):
+    """
+    Test a single checkpoint on all weather conditions.
+
+    Args:
+        checkpoint_path: Path to checkpoint file
+        config: Configuration dict
+        device: Torch device
+        weather_conditions: List of weather condition names
+
+    Returns:
+        Dict with results for each weather condition
+    """
+    # Build model for this checkpoint
+    model_builder = AdvancedModelBuilder(config, device)
+    model = model_builder.build_model()
+
+    if os.path.exists(checkpoint_path):
+        model_builder.load_checkpoint(model, checkpoint_path)
+        print(f"Loaded checkpoint from {checkpoint_path}")
+    else:
+        print(f"Warning: Checkpoint not found at {checkpoint_path}, using untrained model")
+
+    # Test on each weather condition
+    checkpoint_results = {}
+    for weather in weather_conditions:
+        results = test_model_on_weather(config, model, device, weather, checkpoint_path)
+        checkpoint_results[weather] = results
+
+    return checkpoint_results
+
+
 def main():
     parser = argparse.ArgumentParser(description="Test SwinTransformerFusion on ZOD weather conditions")
     parser.add_argument('--config', type=str, required=True, help='Path to config JSON file')
@@ -317,74 +357,39 @@ def main():
     # Setup device
     device = torch.device(config['General']['device'])
 
-    # Build model
-    model_builder = AdvancedModelBuilder(config, device)
-    model = model_builder.build_model()
-
-    # Load checkpoint
+    # Get all checkpoint paths
     if args.checkpoint:
-        checkpoint_path = args.checkpoint
+        checkpoint_paths = [args.checkpoint]
     else:
-        checkpoint_path = get_model_path(config)
+        checkpoint_paths = get_all_checkpoint_paths(config)
 
-    if os.path.exists(checkpoint_path):
-        model_builder.load_checkpoint(model, checkpoint_path)
-        print(f"Loaded checkpoint from {checkpoint_path}")
-        
-        # Extract epoch info
-        epoch_num, epoch_uuid = extract_epoch_info(checkpoint_path)
-    else:
-        print(f"Warning: Checkpoint not found at {checkpoint_path}, using untrained model")
-        epoch_num, epoch_uuid = 0, None
+    if not checkpoint_paths:
+        print("No checkpoints found. Please train the model first.")
+        return
+
+    print(f"Found {len(checkpoint_paths)} checkpoints to test")
 
     # Weather conditions to test
     weather_conditions = ['day_fair', 'day_rain', 'night_fair', 'night_rain', 'snow']
+    eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
 
-    # Test on each weather condition
-    all_results = {}
-    for weather in weather_conditions:
-        results = test_model_on_weather(config, model, device, weather, checkpoint_path)
-        all_results[weather] = results
+    # Test all checkpoints and collect results
+    all_checkpoint_results = collect_checkpoint_results(
+        checkpoint_paths, test_single_checkpoint, config, device, weather_conditions
+    )
 
-    # Save results
-    logdir = config['Log']['logdir']
-    test_results_dir = os.path.join(logdir, 'test_results')
-    os.makedirs(test_results_dir, exist_ok=True)
-    
-    # Generate filename
-    if epoch_uuid:
-        filename = f'epoch_{epoch_num}_{epoch_uuid}.json'
-    else:
-        filename = f'epoch_{epoch_num}_test_results.json'
-    output_path = os.path.join(test_results_dir, filename)
-    
-    output_data = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "epoch": epoch_num,
-        "epoch_uuid": epoch_uuid,
-        "test_uuid": str(uuid.uuid4()),
-        "test_results": sanitize_for_json(all_results)
-    }
+    # Calculate aggregated statistics
+    aggregated_results = calculate_aggregated_statistics(
+        all_checkpoint_results, weather_conditions, eval_classes
+    )
 
-    with open(output_path, 'w') as f:
-        json.dump(output_data, f, indent=2)
+    # Save and upload aggregated results
+    save_and_upload_aggregated_results(
+        config, checkpoint_paths, aggregated_results, all_checkpoint_results
+    )
 
-    print(f"\nResults saved to {output_path}")
-
-    # Print summary
-    print("\nSummary:")
-    for weather, results in all_results.items():
-        eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
-        mean_iou = sum(results[cls]['iou'] for cls in eval_classes) / len(eval_classes)
-        print(f"{weather}: mIoU={mean_iou:.4f}")
-
-    # Send to vision service
-    print("\nUploading test results to vision service...")
-    upload_success = send_test_results_from_file(output_path)
-    if upload_success:
-        print("✅ Test results successfully uploaded to vision service")
-    else:
-        print("❌ Failed to upload test results to vision service")
+    print(f"\n{'='*50}")
+    print(f"Completed testing all {len(checkpoint_paths)} checkpoints and calculated aggregated statistics")
 
 
 if __name__ == "__main__":

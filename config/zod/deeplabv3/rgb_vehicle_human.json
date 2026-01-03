@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD DeepLabV3+ RGB - Vehicle + Human Specialization",
-    "tags": ["ZOD", "Local", "DeepLabV3+", "RGB", "Vehicle-Human", "Specialization"],
+    "tags": ["ZOD", "DeepLabV3+", "RGB", "Vehicle-Human", "Specialization"],
     "CLI": {"backbone": "deeplabv3plus", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

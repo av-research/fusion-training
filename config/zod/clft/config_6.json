@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD Lidar Large",
-    "tags": ["ZOD", "Local", "CLFT-Large", "Lidar"],
+    "tags": ["ZOD", "CLFT-Large", "Lidar"],
     "CLI": {"backbone": "clft", "mode": "lidar", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

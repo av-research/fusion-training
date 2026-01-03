@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD RGB Hybrid - Sign Specialization",
-    "tags": ["ZOD", "Local", "CLFT-Hybrid", "RGB", "Sign-Only", "Specialization"],
+    "tags": ["ZOD", "CLFT-Hybrid", "RGB", "Sign-Only", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

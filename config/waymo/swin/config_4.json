@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo CLFTv2-Tiny LiDAR-Only",
-    "tags": ["Waymo", "Local", "CLFTv2-SwinV2-Tiny", "LiDAR"],
+    "tags": ["Waymo", "CLFTv2-SwinV2-Tiny", "LiDAR"],
     "CLI": {"backbone": "swin_fusion", "mode": "lidar", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",

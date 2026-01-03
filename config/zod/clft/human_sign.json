@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD RGB Hybrid - Human + Sign",
-    "tags": ["ZOD", "Local", "CLFT-Hybrid", "RGB", "Human-Sign", "Specialization"],
+    "tags": ["ZOD", "CLFT-Hybrid", "RGB", "Human-Sign", "Specialization"],
     "CLI": {"backbone": "clft", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

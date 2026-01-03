@@ -1,6 +1,6 @@
 {
     "Summary": "ZOD Lidar Hybrid",
-    "tags": ["ZOD", "Local", "CLFT-Hybrid", "Lidar"],
+    "tags": ["ZOD", "CLFT-Hybrid", "Lidar"],
     "CLI": {"backbone": "clft", "mode": "lidar", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",

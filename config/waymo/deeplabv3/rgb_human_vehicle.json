@@ -1,6 +1,6 @@
 {
     "Summary": "Waymo DeepLabV3+ RGB - Human+Vehicle Specialization",
-    "tags": ["Waymo", "Local", "DeepLabV3+", "RGB", "Human+Vehicle", "Specialization"],
+    "tags": ["Waymo", "DeepLabV3+", "RGB", "Human+Vehicle", "Specialization"],
     "CLI": {"backbone": "deeplabv3plus", "mode": "rgb", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",
