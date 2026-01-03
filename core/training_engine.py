@@ -8,7 +8,7 @@ import torch
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from torch.amp import autocast, GradScaler
-from utils.helpers import relabel_annotation, adjust_learning_rate, save_model_dict, EarlyStopping
+from utils.helpers import relabel_annotation, adjust_learning_rate, save_model_dict, EarlyStopping, manage_checkpoints_by_miou
 from integrations.training_logger import log_epoch_results
 from integrations.vision_service import send_epoch_results_from_file
 from utils.system_monitor import get_epoch_system_snapshot
@@ -223,11 +223,14 @@ class TrainingEngine:
     
     def _handle_checkpoints(self, epoch, val_metrics, epoch_uuid):
         """Handle checkpoint saving and early stopping."""
+        # Save checkpoint every epoch
+        print('Saving model checkpoint...')
+        save_model_dict(self.config, epoch, self.model, self.optimizer, epoch_uuid)
+        print('Checkpoint saved')
+        
+        # Manage checkpoints: keep only top max_checkpoints by validation mIoU
+        manage_checkpoints_by_miou(self.config, self.log_dir)
+        
+        # Early stopping logic (unchanged)
         early_stop_index = round(val_metrics['epoch_loss'], 4)
         self.early_stopping(early_stop_index, epoch, self.model, self.optimizer, epoch_uuid)
-        
-        # Save regular checkpoints
-        if epoch == 0 or (epoch + 1) % self.config['General']['save_epoch'] == 0:
-            print('Saving model checkpoint...')
-            save_model_dict(self.config, epoch, self.model, self.optimizer, epoch_uuid)
-            print('Checkpoint saved')

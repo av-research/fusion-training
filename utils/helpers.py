@@ -12,8 +12,9 @@ def creat_dir(config):
     if not os.path.exists(logdir):
         os.makedirs(logdir)
         print(f'Making log directory {logdir}...')
-    if not os.path.exists(logdir + 'checkpoints'):
-        os.makedirs(logdir + 'checkpoints')
+    checkpoint_dir = os.path.join(logdir, 'checkpoints')
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
 
 def get_annotation_path(cam_path, dataset_name, config):
     """Get annotation path based on dataset and config."""
@@ -166,7 +167,7 @@ def save_model_dict(config, epoch, model, optimizer, epoch_uuid=None):
         'epoch': epoch,
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict()},
-        config['Log']['logdir']+'checkpoints/'+filename
+        os.path.join(config['Log']['logdir'], 'checkpoints', filename)
     )
 
 def get_model_config_key(config):
@@ -193,6 +194,108 @@ def adjust_learning_rate(config, optimizer, epoch):
 
     return lr
 
+def manage_checkpoints_by_miou(config, log_dir):
+    """Keep only the top max_checkpoints checkpoints based on validation mIoU from JSON files."""
+    max_checkpoints = config['General'].get('max_epochs', 10)  # Default to 10 if not specified
+    import glob
+    import os
+    import json
+    
+    checkpoint_dir = os.path.join(log_dir, 'checkpoints')
+    epochs_dir = os.path.join(log_dir, 'epochs')
+    
+    # Find all checkpoint files
+    checkpoint_pattern = os.path.join(checkpoint_dir, '*.pth')
+    checkpoint_files = glob.glob(checkpoint_pattern)
+    
+    if len(checkpoint_files) <= max_checkpoints:
+        return  # No need to delete anything
+    
+    # Get validation mIoU for each checkpoint from JSON files
+    checkpoints_with_miou = []
+    
+    for checkpoint_path in checkpoint_files:
+        checkpoint_filename = os.path.basename(checkpoint_path)
+        
+        # Extract epoch and uuid from checkpoint filename (format: epoch_X_uuid.pth)
+        if checkpoint_filename.startswith('epoch_'):
+            parts = checkpoint_filename.replace('epoch_', '').replace('.pth', '').split('_')
+            if len(parts) >= 2:
+                epoch_num = int(parts[0])
+                epoch_uuid = parts[1]
+                
+                # Find corresponding JSON file
+                json_pattern = os.path.join(epochs_dir, f'epoch_{epoch_num}_{epoch_uuid}.json')
+                json_files = glob.glob(json_pattern)
+                
+                if json_files:
+                    try:
+                        with open(json_files[0], 'r') as f:
+                            json_data = json.load(f)
+                        
+                        # Get validation mIoU
+                        val_miou = json_data.get('results', {}).get('val', {}).get('mean_iou', -1.0)
+                        
+                        checkpoints_with_miou.append({
+                            'path': checkpoint_path,
+                            'epoch': epoch_num,
+                            'uuid': epoch_uuid,
+                            'miou': val_miou
+                        })
+                    except (json.JSONDecodeError, KeyError, FileNotFoundError):
+                        # If we can't read the JSON, treat as lowest priority
+                        checkpoints_with_miou.append({
+                            'path': checkpoint_path,
+                            'epoch': epoch_num,
+                            'uuid': epoch_uuid,
+                            'miou': -1.0
+                        })
+                else:
+                    # No JSON file found, treat as lowest priority
+                    checkpoints_with_miou.append({
+                        'path': checkpoint_path,
+                        'epoch': epoch_num,
+                        'uuid': epoch_uuid,
+                        'miou': -1.0
+                    })
+            else:
+                # Can't parse filename, treat as lowest priority
+                checkpoints_with_miou.append({
+                    'path': checkpoint_path,
+                    'epoch': -1,
+                    'uuid': 'unknown',
+                    'miou': -1.0
+                })
+        else:
+            # Not an epoch checkpoint, treat as lowest priority
+            checkpoints_with_miou.append({
+                'path': checkpoint_path,
+                'epoch': -1,
+                'uuid': 'unknown',
+                'miou': -1.0
+            })
+    
+    # Sort by validation mIoU descending (highest first)
+    checkpoints_with_miou.sort(key=lambda x: x['miou'], reverse=True)
+    
+    # Keep only top max_checkpoints
+    to_delete = checkpoints_with_miou[max_checkpoints:]
+    
+    for checkpoint_info in to_delete:
+        try:
+            # Also delete the corresponding JSON file
+            json_pattern = os.path.join(epochs_dir, f'epoch_{checkpoint_info["epoch"]}_{checkpoint_info["uuid"]}.json')
+            json_files = glob.glob(json_pattern)
+            for json_file in json_files:
+                os.remove(json_file)
+                print(f"Deleted JSON file: {os.path.basename(json_file)}")
+            
+            # Delete the checkpoint file
+            os.remove(checkpoint_info['path'])
+            print(f"Deleted checkpoint: {os.path.basename(checkpoint_info['path'])} (mIoU: {checkpoint_info['miou']:.4f})")
+        except OSError as e:
+            print(f"Error deleting checkpoint {checkpoint_info['path']}: {e}")
+
 class EarlyStopping(object):
     def __init__(self, config):
         self.patience = config['General']['early_stop_patience']
@@ -216,13 +319,7 @@ class EarlyStopping(object):
         else:
             print(f'Valid loss decreased from {self.min_param:.4f} ' + f'to {valid_param:.4f}')
             self.min_param = valid_param
-            # Check if this epoch will also be saved as a regular checkpoint
-            save_epoch = self.config['General']['save_epoch']
-            if not (epoch == 0 or (epoch + 1) % save_epoch == 0):
-                save_model_dict(self.config, epoch, model, optimizer, epoch_uuid)
-                print('Saving Model...')
-            else:
-                print('Skipping early stopping save (regular checkpoint will be saved)')
+            # No need to save additional checkpoint - we save every epoch now
             self.count = 0
 
 def create_config_snapshot():

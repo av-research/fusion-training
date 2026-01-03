@@ -22,7 +22,7 @@ from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
 from integrations.training_logger import generate_training_uuid, log_epoch_results
 from integrations.vision_service import create_training, create_config, get_training_by_uuid, send_epoch_results_from_file
-from utils.helpers import get_model_path
+from utils.helpers import get_model_path, manage_checkpoints_by_miou
 from utils.system_monitor import get_epoch_system_snapshot, print_system_info
 
 
@@ -495,9 +495,11 @@ def main():
         if vision_training_id:
             send_epoch_results_from_file(vision_training_id, epoch, epoch_file)
         
-        # Save checkpoint
-        if (epoch + 1) % config['General']['save_epoch'] == 0 or epoch == config['General']['epochs'] - 1:
-            save_checkpoint(model, optimizer, scheduler, epoch, config, log_dir, epoch_uuid)
+        # Save checkpoint every epoch
+        save_checkpoint(model, optimizer, scheduler, epoch, config, log_dir, epoch_uuid)
+        
+        # Manage checkpoints: keep only top max_checkpoints by validation mIoU
+        manage_checkpoints_by_miou(config, log_dir)
         
         # Early stopping
         if val_metrics['mean_iou'] > best_val_iou:

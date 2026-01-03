@@ -11,7 +11,7 @@
         "resume_training": false,
         "reset_lr": false,
         "early_stop_patience": 200,
-        "save_epoch": 20,
+        "max_epochs": 10,
         "model_path": ""
     },
     "Log": {"logdir": "./logs/zod/config_1/"},
