@@ -1,5 +1,5 @@
 {
-    "Summary": "Waymo CLFTv2-SwinV2-Base Local LiDAR-Only",
+    "Summary": "Waymo CLFTv2-Base LiDAR-Only",
     "tags": ["Waymo", "Local", "CLFTv2-SwinV2-Base", "LiDAR"],
     "CLI": {"backbone": "swin_fusion", "mode": "lidar", "path": "./waymo_dataset/splits_clft/"},
     "General": {

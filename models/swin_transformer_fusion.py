@@ -268,25 +268,48 @@ class SwinTransformerFusion(nn.Module):
             self.head_segmentation = HeadSeg(resample_dim, nclasses=nclasses)
 
     def forward(self, rgb, lidar, modal='rgb'):
-        if modal == 'rgb' or modal == 'cross_fusion':
-            features = self.transformer_encoders(rgb)  # Use RGB for camera-based modes
+        if modal == 'rgb':
+            features_rgb = self.transformer_encoders(rgb)
+            features_lidar = None
+        elif modal == 'lidar':
+            features_lidar = self.transformer_encoders(lidar)
+            features_rgb = None
+        elif modal == 'cross_fusion':
+            features_rgb = self.transformer_encoders(rgb)
+            features_lidar = self.transformer_encoders(lidar)
         else:
-            features = self.transformer_encoders(lidar)  # Use LiDAR for LiDAR-only
+            raise ValueError(f"Invalid modal: {modal}")
+        
+        # Determine fusion strategy (assume all fusions have the same strategy)
+        fusion_strategy = self.fusions[0].fusion_strategy if self.fusions else 'cross_attention'
+        
         previous_stage = None
         for i in range(len(self.fusions)):
-            activation_result = features[i]
-            # Ensure [b, c, h, w]
-            if activation_result.shape[1] != self.emb_dims[i]:
-                activation_result = activation_result.permute(0, 3, 1, 2)  # assume [b, h, w, c] -> [b, c, h, w]
             if modal == 'rgb':
-                reassemble_result_RGB = self.reassembles_RGB[i](activation_result)
-                reassemble_result_XYZ = torch.zeros_like(reassemble_result_RGB)
-            if modal == 'lidar':
-                reassemble_result_XYZ = self.reassembles_XYZ[i](activation_result)
-                reassemble_result_RGB = torch.zeros_like(reassemble_result_XYZ)
-            if modal == 'cross_fusion':
-                reassemble_result_RGB = self.reassembles_RGB[i](activation_result)
-                reassemble_result_XYZ = self.reassembles_XYZ[i](activation_result)
+                activation_result_rgb = features_rgb[i]
+                activation_result_lidar = torch.zeros_like(activation_result_rgb)
+            elif modal == 'lidar':
+                activation_result_lidar = features_lidar[i]
+                activation_result_rgb = torch.zeros_like(activation_result_lidar)
+            elif modal == 'cross_fusion':
+                if fusion_strategy == 'simple_average':
+                    # For simple average, average the backbone features
+                    activation_result = (features_rgb[i] + features_lidar[i]) / 2
+                    activation_result_rgb = activation_result
+                    activation_result_lidar = activation_result
+                else:
+                    # For cross_attention or others, use separate features
+                    activation_result_rgb = features_rgb[i]
+                    activation_result_lidar = features_lidar[i]
+            
+            # Ensure [b, c, h, w]
+            if activation_result_rgb.shape[1] != self.emb_dims[i]:
+                activation_result_rgb = activation_result_rgb.permute(0, 3, 1, 2)
+            if activation_result_lidar.shape[1] != self.emb_dims[i]:
+                activation_result_lidar = activation_result_lidar.permute(0, 3, 1, 2)
+            
+            reassemble_result_RGB = self.reassembles_RGB[i](activation_result_rgb)
+            reassemble_result_XYZ = self.reassembles_XYZ[i](activation_result_lidar)
             
             fusion_result = self.fusions[i](reassemble_result_RGB, reassemble_result_XYZ, previous_stage, modal)
             previous_stage = fusion_result

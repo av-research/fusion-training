@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD CLFTv2-SwinV2-Tiny Local RGB-Only",
+    "Summary": "ZOD CLFTv2-Tiny RGB-Only",
     "tags": ["ZOD", "Local", "CLFTv2-SwinV2-Tiny", "RGB"],
     "CLI": {"backbone": "swin_fusion", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {

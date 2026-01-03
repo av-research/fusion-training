@@ -1,11 +1,11 @@
 {
-    "Summary": "Waymo CLFTv2-SwinV2-Tiny Local Cross-Fusion",
+    "Summary": "Waymo CLFTv2-Tiny Cross-Fusion",
     "tags": ["Waymo", "Local", "CLFTv2-SwinV2-Tiny", "CrossFusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",
         "epochs": 50,
-        "batch_size": 8,
+        "batch_size": 2,
         "path_predicted_images": "output",
         "seed": 0,
         "resume_training": false,

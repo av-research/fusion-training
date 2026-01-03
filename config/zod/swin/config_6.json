@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD CLFTv2-SwinV2-Large Local LiDAR-Only",
+    "Summary": "ZOD CLFTv2-Large LiDAR-Only",
     "tags": ["ZOD", "Local", "CLFTv2-SwinV2-Large", "LiDAR"],
     "CLI": {"backbone": "swin_fusion", "mode": "lidar", "path": "./zod_dataset/"},
     "General": {

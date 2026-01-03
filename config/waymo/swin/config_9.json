@@ -1,5 +1,5 @@
 {
-    "Summary": "Waymo CLFTv2-SwinV2-Large Local Cross-Fusion",
+    "Summary": "Waymo CLFTv2-Large Cross-Fusion",
     "tags": ["Waymo", "Local", "CLFTv2-SwinV2-Large", "CrossFusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {

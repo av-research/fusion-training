@@ -1,5 +1,5 @@
 {
-    "Summary": "ZOD CLFTv2-SwinV2-Tiny Local Cross-Fusion",
+    "Summary": "ZOD CLFTv2-Tiny Cross-Fusion",
     "tags": ["ZOD", "Local", "CLFTv2-SwinV2-Tiny", "CrossFusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
