@@ -16,3 +16,4 @@ thop
 fvcore
 python-dotenv
 GPUtil
+scipy
