@@ -4,6 +4,10 @@ from datetime import datetime
 import uuid
 import os
 from dotenv import load_dotenv
+import urllib3
+
+# Suppress SSL certificate warnings for development
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Load environment variables from .env file
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
@@ -30,7 +34,7 @@ def get_training_by_uuid(training_uuid):
     url = f"{VISION_API_BASE_URL}/trainings/uuid/{training_uuid}"
     
     try:
-        response = requests.get(url, headers=get_auth_headers(), timeout=10)
+        response = requests.get(url, headers=get_auth_headers(), timeout=10, verify=False)
         response.raise_for_status()
         data = response.json()
         if data.get("success"):
@@ -84,7 +88,7 @@ def create_training(uuid, name, model, dataset, description=None, status="runnin
         payload["tags"] = tags
     
     try:
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=10)
+        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=10, verify=False)
         response.raise_for_status()
         data = response.json()
         if data.get("success"):
@@ -123,7 +127,7 @@ def send_epoch_results_from_file(training_id, epoch_num, results_file_path):
         
         url = f"{VISION_API_BASE_URL}/epochs/upload"
         
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=10)
+        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=10, verify=False)
         response.raise_for_status()
         data = response.json()
         if data.get("success"):
@@ -176,7 +180,7 @@ def create_config(name, config_data, config_uuid=None):
     
     try:
         print(f"Creating config with config_name={config_name}, Summary={summary}")
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=30)
+        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=30, verify=False)
         response.raise_for_status()
         data = response.json()
         if data.get("success"):
@@ -212,7 +216,7 @@ def send_test_results_from_file(results_file_path):
         
         url = f"{VISION_API_BASE_URL}/test-results/upload"
         
-        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=30)
+        response = requests.post(url, json=payload, headers=get_auth_headers(), timeout=30, verify=False)
         response.raise_for_status()
         data = response.json()
         if data.get("success"):

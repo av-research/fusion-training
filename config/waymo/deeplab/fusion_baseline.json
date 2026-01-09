@@ -1,7 +1,7 @@
 {
-    "Summary": "ZOD DeepLabV3+ Late Fusion (Learned Weights)",
-    "tags": ["ZOD", "DeepLabV3+", "Fusion", "Baseline"],
-    "CLI": {"backbone": "deeplabv3plus", "mode": "fusion", "path": "./zod_dataset/"},
+    "Summary": "Waymo DeepLabV3+ Late Fusion Baseline",
+    "tags": ["Waymo", "DeepLabV3+", "Fusion", "Baseline"],
+    "CLI": {"backbone": "deeplabv3plus", "mode": "fusion", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",
         "epochs": 50,
@@ -14,20 +14,19 @@
         "max_epochs": 10,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/zod/deeplab_fusion_learned/"},
+    "Log": {"logdir": "./logs/waymo/deeplab_fusion_baseline/"},
     "DeepLabV3Plus": {
         "learning_rate": 0.0001,
         "backbone": "resnet101",
         "pretrained": true,
-        "fusion_type": "learned",
+        "fusion_type": "average",
         "lr_scheduler": {"type": "step", "step_size": 15, "gamma": 0.5}
     },
     "Dataset": {
-        "name": "zod",
-        "dataset_root": "./zod_dataset",
-        "annotation_path": "annotation_camera_only",
-        "train_split": "./zod_dataset/train.txt",
-        "val_split": "./zod_dataset/validation.txt",
+        "name": "waymo",
+        "dataset_root": "./waymo_dataset",
+        "train_split": "./waymo_dataset/splits_clft/train_all.txt",
+        "val_split": "./waymo_dataset/splits_clft/early_stop_valid.txt",
         "splits": {"split_train": 0.6, "split_val": 0.2, "split_test": 0.2},
         "transforms": {
             "resize": 384,

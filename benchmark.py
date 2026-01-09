@@ -225,12 +225,13 @@ class CLFTBenchmarker:
 
         return flops_info
 
-    def _calculate_deeplab_flops(self, model, config):
+    def _calculate_deeplab_flops(self, model, config, modality='rgb'):
         """Calculate FLOPS for DeepLabV3+ model."""
-        rgb, _ = self._create_dummy_input(config, 'rgb')
+        rgb, lidar = self._create_dummy_input(config, modality)
 
         # Move inputs to same device as model
         rgb = rgb.to(self.device)
+        lidar = lidar.to(self.device)
 
         flops_info = {
             'flops_available': False,
@@ -242,7 +243,12 @@ class CLFTBenchmarker:
         # Try thop first
         if THOP_AVAILABLE:
             try:
-                flops, params = profile(model, inputs=(rgb,), verbose=False)
+                if modality == 'rgb':
+                    flops, params = profile(model, inputs=(rgb,), verbose=False)
+                elif modality == 'lidar':
+                    flops, params = profile(model, inputs=(lidar,), verbose=False)
+                else:  # fusion
+                    flops, params = profile(model, inputs=(rgb, lidar), verbose=False)
 
                 flops_info.update({
                     'flops_available': True,
@@ -256,7 +262,12 @@ class CLFTBenchmarker:
         # Try fvcore as fallback
         if not flops_info['flops_available'] and FVCORE_AVAILABLE:
             try:
-                flop_analyzer = FlopCountAnalysis(model, (rgb,))
+                if modality == 'rgb':
+                    flop_analyzer = FlopCountAnalysis(model, (rgb,))
+                elif modality == 'lidar':
+                    flop_analyzer = FlopCountAnalysis(model, (lidar,))
+                else:  # fusion
+                    flop_analyzer = FlopCountAnalysis(model, (rgb, lidar))
 
                 total_flops = flop_analyzer.total()
                 flops_info.update({
@@ -270,13 +281,14 @@ class CLFTBenchmarker:
 
         return flops_info
 
-    def _measure_deeplab_inference_time(self, model, config, num_runs=100, warmup_runs=10):
+    def _measure_deeplab_inference_time(self, model, config, modality='rgb', num_runs=100, warmup_runs=10):
         """Measure inference time and memory usage for DeepLabV3+ on current device."""
         model.eval()
-        rgb, _ = self._create_dummy_input(config, 'rgb')
+        rgb, lidar = self._create_dummy_input(config, modality)
 
         # Move inputs to device
         rgb = rgb.to(self.device)
+        lidar = lidar.to(self.device)
 
         # Get baseline memory usage after model loading
         baseline_gpu_memory = torch.cuda.memory_allocated() / (1024**2) if self.device.type == 'cuda' else 0
@@ -285,7 +297,12 @@ class CLFTBenchmarker:
         # Warmup runs
         with torch.no_grad():
             for _ in range(warmup_runs):
-                _ = model(rgb)
+                if modality == 'rgb':
+                    _ = model(rgb)
+                elif modality == 'lidar':
+                    _ = model(lidar)
+                else:  # fusion
+                    _ = model(rgb, lidar)
 
         # Synchronize before timing
         if self.device.type == 'cuda':
@@ -301,7 +318,12 @@ class CLFTBenchmarker:
             for _ in range(num_runs):
                 start_time = time.time()
 
-                _ = model(rgb)
+                if modality == 'rgb':
+                    _ = model(rgb)
+                elif modality == 'lidar':
+                    _ = model(lidar)
+                else:  # fusion
+                    _ = model(rgb, lidar)
 
                 # Synchronize after inference
                 if self.device.type == 'cuda':
@@ -580,10 +602,10 @@ class CLFTBenchmarker:
         print(f"\nTesting modality: {modality.upper()}")
 
         # Calculate FLOPS
-        flops_info = self._calculate_deeplab_flops(model, config)
+        flops_info = self._calculate_deeplab_flops(model, config, modality)
 
         # Measure inference time
-        timing_info = self._measure_deeplab_inference_time(model, config)
+        timing_info = self._measure_deeplab_inference_time(model, config, modality)
 
         # Combine results
         result = {
