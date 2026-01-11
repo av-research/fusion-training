@@ -28,7 +28,7 @@
         "loss_depth": "ssi",
         "loss_segmentation": "ce",
         "lr_momentum": 0.99,
-        "pretrained": false
+        "pretrained": true
     },
     "Dataset": {
         "name": "zod",
