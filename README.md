@@ -4,33 +4,16 @@ This repository contains the implementation for the paper "CLFTv2: Hierarchical 
 
 ## Abstract
 
-Resilient semantic segmentation in autonomous
-driving relies on effectively fusing the complementary informa-
-tion from camera and LiDAR sensors. While recent Transformer-
-based fusion architectures surpass CNNs in global context
-modeling, standard Vision Transformers (ViT) are hindered by
-quadratic computational complexity and fixed-scale processing,
-which limits their ability to resolve small, distant objects. To
-address these challenges, we present CLFTv2, a hierarchical
-multi-modal framework built upon the Swin Transformer. By
-utilizing shifted window attention, our approach achieves linear
-complexity, enabling efficient processing of high-resolution sensor
-data. We introduce a novel Spatial Reassembling Module and
-Gated Residual Fusion Block that dynamically align sparse
-geometric features with dense semantic maps across multiple
-scales. This design specifically targets the detection of Vulnerable
-Road Users (VRUs) by preserving fine-grained details often lost in
-deep networks. Furthermore, we address the label scarcity in the
-Zenseact Open Dataset (ZOD) by generating dense segmentation
-masks via the Segment Anything Model (SAM), facilitating
-pixel-level supervision. Extensive experiments show that CLFTv2
-achieves state-of-the-art performance with a foreground mIoU of
-93.1% on the Waymo Open Dataset and 83.3% on ZOD, signifi-
-cantly outperforming previous baselines. Notably, our specialized
-fusion yields substantial safety improvements, achieving 91.2%
-and 75.3% IoU for pedestrians on Waymo and ZOD, respectively.
-Our code and data processing pipeline are publicly released to
-support further research.
+Resilient semantic segmentation in autonomous driving relies on effectively fusing the complementary information from camera and LiDAR sensors. 
+While recent Transformer-based fusion architectures surpass CNNs in global context modeling, standard Vision Transformers (ViT) are hindered by quadratic computational complexity and fixed-scale processing, which limits their ability to resolve small, distant objects.
+To address these challenges, we present CLFTv2, a hierarchical multi-modal framework built upon the Swin Transformer. 
+By utilizing shifted window attention, our approach achieves linear complexity, enabling efficient processing of high-resolution sensor data.
+We introduce a novel Spatial Reassembling Module and Gated Residual Fusion Block that dynamically align sparse geometric features with dense semantic maps across multiple scales. 
+This design specifically targets the detection of Vulnerable Road Users (VRUs) by preserving fine-grained details often lost in deep networks.
+Furthermore, we address the label scarcity in the Zenseact Open Dataset (ZOD) by generating dense segmentation masks via the Segment Anything Model (SAM), facilitating pixel-level supervision.
+Extensive experiments show that CLFTv2 achieves state-of-the-art performance with a foreground mIoU of 93.1\% on the Waymo Open Dataset and 83.3\% on ZOD, significantly outperforming previous baselines.
+Notably, our specialized fusion yields substantial safety improvements, achieving 91.2\% and 75.3\% IoU for pedestrians on Waymo and ZOD, respectively.
+Our code and data processing pipeline are publicly released to support further research.
 
 ## Setup Virtual Environment
 
