@@ -1,10 +1,36 @@
-# Fusion Training: SAM-Enhanced Semantic Segmentation on ZOD
+# Fusion Training: CLFTv2
 
-This repository contains the implementation for the paper "SAM-Enhanced Semantic Segmentation on ZOD: Specialized Models for Vulnerable Road Users".
+This repository contains the implementation for the paper "CLFTv2: Hierarchical Vision Transformers for Camera-LiDAR Foreground Segmentation in Autonomous Driving".
 
 ## Abstract
 
-The Zenseact Open Dataset (ZOD) provides valuable multi-modal data for autonomous driving but lacks dense semantic segmentation annotations, limiting its use for pixel-level perception tasks. We introduce a preprocessing pipeline using the Segment Anything Model (SAM) to convert ZOD's 2D bounding box annotations into dense pixel-level segmentation masks, enabling semantic segmentation training on this dataset for the first time. Due to the imperfect nature of automated mask generation, only 36% of frames passed manual quality control and were included in the final dataset. We present a comprehensive comparison between transformer-based Camera-LiDAR Fusion Transformers (CLFT) and CNN-based DeepLabV3+ architectures for multi-modal semantic segmentation on ZOD across RGB, LiDAR, and fusion modalities under diverse weather conditions. Furthermore, we investigate model specialization techniques to address class imbalance, developing separate modules optimized for large-scale objects (vehicles) and small-scale vulnerable road users (pedestrians, cyclists, traffic signs). The specialized models significantly improve detection of underrepresented safety-critical classes while maintaining overall segmentation accuracy, providing practical insights for deploying multi-modal perception systems in autonomous vehicles. To enable reproducible research, we release the complete open-source implementation of our processing pipeline.
+Resilient semantic segmentation in autonomous
+driving relies on effectively fusing the complementary informa-
+tion from camera and LiDAR sensors. While recent Transformer-
+based fusion architectures surpass CNNs in global context
+modeling, standard Vision Transformers (ViT) are hindered by
+quadratic computational complexity and fixed-scale processing,
+which limits their ability to resolve small, distant objects. To
+address these challenges, we present CLFTv2, a hierarchical
+multi-modal framework built upon the Swin Transformer. By
+utilizing shifted window attention, our approach achieves linear
+complexity, enabling efficient processing of high-resolution sensor
+data. We introduce a novel Spatial Reassembling Module and
+Gated Residual Fusion Block that dynamically align sparse
+geometric features with dense semantic maps across multiple
+scales. This design specifically targets the detection of Vulnerable
+Road Users (VRUs) by preserving fine-grained details often lost in
+deep networks. Furthermore, we address the label scarcity in the
+Zenseact Open Dataset (ZOD) by generating dense segmentation
+masks via the Segment Anything Model (SAM), facilitating
+pixel-level supervision. Extensive experiments show that CLFTv2
+achieves state-of-the-art performance with a foreground mIoU of
+93.1% on the Waymo Open Dataset and 83.3% on ZOD, signifi-
+cantly outperforming previous baselines. Notably, our specialized
+fusion yields substantial safety improvements, achieving 91.2%
+and 75.3% IoU for pedestrians on Waymo and ZOD, respectively.
+Our code and data processing pipeline are publicly released to
+support further research.
 
 ## Setup Virtual Environment
 
