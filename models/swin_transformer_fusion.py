@@ -145,8 +145,10 @@ class CrossAttention(nn.Module):
         return out
 
 class Fusion(nn.Module):
-    def __init__(self, resample_dim, fusion_strategy='cross_attention'):
+    def __init__(self, resample_dim, fusion_strategy=''):
         super(Fusion, self).__init__()
+        if not fusion_strategy:
+            raise ValueError("fusion_strategy must be specified and cannot be empty")
         self.res_conv_xyz = ResidualConvUnit(resample_dim)
         self.res_conv_rgb = ResidualConvUnit(resample_dim)
         self.res_conv2 = ResidualConvUnit(resample_dim)
@@ -168,14 +170,25 @@ class Fusion(nn.Module):
             self.alpha = nn.Parameter(torch.zeros(1))  # Gating parameter
         elif self.fusion_strategy == 'sarf':
             self.alpha = nn.Parameter(torch.zeros(1))  # Gating parameter
-            self.beta = nn.Parameter(torch.ones(resample_dim) * 0.5)  # Channel-wise weighting parameter
             self.ln_rgb = nn.LayerNorm(resample_dim)
             self.ln_lidar = nn.LayerNorm(resample_dim)
-            # Spatial attention for beta
+            # Spatial attention for beta: outputs 1 channel [B, 1, H, W]
             self.beta_attn = nn.Sequential(
-                nn.Conv2d(resample_dim * 2, resample_dim, kernel_size=1),
+                nn.Conv2d(resample_dim * 2, 1, kernel_size=1),
                 nn.Sigmoid()
             )
+        elif self.fusion_strategy == 'gated_average':
+            self.alpha = nn.Parameter(torch.zeros(1))
+        elif self.fusion_strategy == 'residual_average':
+            # Middle ground: residual convs + average + previous stage (no gating)
+            pass
+        elif self.fusion_strategy == 'gated_average_no_prev':
+            # Ablate previous_stage: residual convs + gating, no previous stage
+            self.alpha = nn.Parameter(torch.zeros(1))
+        elif self.fusion_strategy == 'weighted_average':
+            # Global weighted average with gating
+            self.alpha = nn.Parameter(torch.zeros(1))
+            self.beta = nn.Parameter(torch.tensor(0.5))
         elif self.fusion_strategy == 'simple_average':
             # No additional parameters for true simple average
             pass
@@ -222,6 +235,26 @@ class Fusion(nn.Module):
                 rgb_mod = gamma * output_stage1_rgb + beta
                 # Gated residual
                 output_stage1 = rgb_mod + output_stage1_lidar + previous_stage + self.alpha * (rgb_mod + output_stage1_lidar)
+            elif self.fusion_strategy == 'gated_average':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                simple_avg = (output_stage1_rgb + output_stage1_lidar) / 2
+                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * simple_avg
+            elif self.fusion_strategy == 'residual_average':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                avg = (output_stage1_rgb + output_stage1_lidar) / 2
+                output_stage1 = avg + previous_stage
+            elif self.fusion_strategy == 'gated_average_no_prev':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                simple_avg = (output_stage1_rgb + output_stage1_lidar) / 2
+                output_stage1 = output_stage1_rgb + output_stage1_lidar + self.alpha * simple_avg  # No previous_stage
+            elif self.fusion_strategy == 'weighted_average':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                weighted_avg = (1 - self.beta) * output_stage1_rgb + self.beta * output_stage1_lidar
+                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * weighted_avg
             elif self.fusion_strategy == 'simple_average':
                 # True simple average fusion without resblocks and previous stage
                 output_stage1 = (rgb + lidar) / 2
@@ -261,12 +294,14 @@ class SwinTransformerFusion(nn.Module):
                  type='segmentation',
                  model_timm='swin_base_patch4_window7_224',
                  pretrained=True,
-                 fusion_strategy='cross_attention'
+                 fusion_strategy=''
                  ):
         """
         Swin-based fusion model.
         """
         super().__init__()
+        if not fusion_strategy:
+            raise ValueError("fusion_strategy must be specified and cannot be empty")
 
         self.transformer_encoders = timm.create_model(model_timm, pretrained=pretrained, features_only=True)
         self.type_ = type

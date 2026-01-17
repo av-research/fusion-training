@@ -23,7 +23,7 @@ class AdvancedModelBuilder:
         """Build advanced model based on config."""
 
         pretrained = self.config['SwinFusion'].get('pretrained', True)
-        fusion_strategy = self.config['SwinFusion'].get('fusion_strategy', 'cross_attention')
+        fusion_strategy = self.config['SwinFusion']['fusion_strategy']
         
         model = SwinTransformerFusion(
             emb_dims=self.config['SwinFusion'].get('emb_dims', None),
