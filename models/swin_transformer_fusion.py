@@ -168,7 +168,7 @@ class Fusion(nn.Module):
                 nn.ReLU(),
             )
             self.alpha = nn.Parameter(torch.zeros(1))  # Gating parameter
-        elif self.fusion_strategy == 'sarf':
+        elif self.fusion_strategy == 'spatial_fusion':
             self.alpha = nn.Parameter(torch.zeros(1))  # Gating parameter
             self.ln_rgb = nn.LayerNorm(resample_dim)
             self.ln_lidar = nn.LayerNorm(resample_dim)
@@ -194,8 +194,10 @@ class Fusion(nn.Module):
             pass
 
     def forward(self, rgb, lidar, previous_stage=None, modal = 'rgb'):
-        if previous_stage == None:
-                previous_stage = torch.zeros_like(rgb)
+        if previous_stage is None:
+            previous_stage = torch.zeros_like(rgb)
+        else:
+            previous_stage = nn.functional.interpolate(previous_stage, size=rgb.shape[2:], mode='bilinear', align_corners=False)
 
         attn_out = torch.zeros_like(rgb)
 
@@ -213,7 +215,7 @@ class Fusion(nn.Module):
                 attn_out = self.cross_attn(output_stage1_rgb, output_stage1_lidar)
                 # Formula: F_f = F_c + alpha * Attention(F_c, F_l) + F_l
                 output_stage1 = output_stage1_rgb + (self.alpha * attn_out) + output_stage1_lidar + previous_stage
-            elif self.fusion_strategy == 'sarf':
+            elif self.fusion_strategy == 'spatial_fusion':
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
                 # Apply layer normalization
@@ -314,17 +316,17 @@ class SwinTransformerFusion(nn.Module):
         else:
             raise ValueError("emb_dims must be provided if backbone does not have feature_info")
             
-        # Reassembles Fusion
-        self.reassembles_RGB = []
-        self.reassembles_XYZ = []
+        # Projections for ablation (instead of reassembles)
+        self.projections_RGB = []
+        self.projections_XYZ = []
         self.fusions = []
         for i, s in enumerate(reassemble_s):
             emb_dim_i = self.emb_dims[i]
-            self.reassembles_RGB.append(SpatialReassemble(read, s, emb_dim_i, resample_dim))
-            self.reassembles_XYZ.append(SpatialReassemble(read, s, emb_dim_i, resample_dim))
+            self.projections_RGB.append(nn.Conv2d(emb_dim_i, resample_dim, kernel_size=1))
+            self.projections_XYZ.append(nn.Conv2d(emb_dim_i, resample_dim, kernel_size=1))
             self.fusions.append(Fusion(resample_dim, fusion_strategy=fusion_strategy))
-        self.reassembles_RGB = nn.ModuleList(self.reassembles_RGB)
-        self.reassembles_XYZ = nn.ModuleList(self.reassembles_XYZ)
+        self.projections_RGB = nn.ModuleList(self.projections_RGB)
+        self.projections_XYZ = nn.ModuleList(self.projections_XYZ)
         self.fusions = nn.ModuleList(self.fusions)
 
         #Head
@@ -370,10 +372,14 @@ class SwinTransformerFusion(nn.Module):
             if activation_result_lidar.shape[1] != self.emb_dims[i]:
                 activation_result_lidar = activation_result_lidar.permute(0, 3, 1, 2)
             
-            reassemble_result_RGB = self.reassembles_RGB[i](activation_result_rgb)
-            reassemble_result_XYZ = self.reassembles_XYZ[i](activation_result_lidar)
+            projection_result_RGB = self.projections_RGB[i](activation_result_rgb)
+            projection_result_XYZ = self.projections_XYZ[i](activation_result_lidar)
             
-            fusion_result = self.fusions[i](reassemble_result_RGB, reassemble_result_XYZ, previous_stage, modal)
+            # Interpolate to fixed size for ablation (64x64)
+            projection_result_RGB = nn.functional.interpolate(projection_result_RGB, size=(64, 64), mode='bilinear', align_corners=False)
+            projection_result_XYZ = nn.functional.interpolate(projection_result_XYZ, size=(64, 64), mode='bilinear', align_corners=False)
+            
+            fusion_result = self.fusions[i](projection_result_RGB, projection_result_XYZ, previous_stage, modal)
             previous_stage = fusion_result
         out_depth = None
         out_segmentation = None
@@ -381,5 +387,12 @@ class SwinTransformerFusion(nn.Module):
             out_depth = self.head_depth(previous_stage)
         if self.head_segmentation != None:
             out_segmentation = self.head_segmentation(previous_stage)
+        
+        # Interpolate to input resolution (256x256)
+        if out_depth is not None:
+            out_depth = nn.functional.interpolate(out_depth, size=(256, 256), mode='bilinear', align_corners=False)
+        if out_segmentation is not None:
+            out_segmentation = nn.functional.interpolate(out_segmentation, size=(256, 256), mode='bilinear', align_corners=False)
+        
         return out_depth, out_segmentation
 
