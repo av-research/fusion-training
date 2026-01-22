@@ -179,6 +179,12 @@ class Fusion(nn.Module):
             )
         elif self.fusion_strategy == 'gated_average':
             self.alpha = nn.Parameter(torch.zeros(1))
+        elif self.fusion_strategy == 'ln_gated_average':
+            self.alpha = nn.Parameter(torch.zeros(1))
+            self.ln_rgb = nn.LayerNorm(resample_dim)
+            self.ln_lidar = nn.LayerNorm(resample_dim)
+        elif self.fusion_strategy == 'sigmoid_gated_average':
+            self.alpha = nn.Parameter(torch.zeros(1))  # Gating parameter constrained via sigmoid
         elif self.fusion_strategy == 'residual_average':
             # Middle ground: residual convs + average + previous stage (no gating)
             pass
@@ -215,17 +221,6 @@ class Fusion(nn.Module):
                 attn_out = self.cross_attn(output_stage1_rgb, output_stage1_lidar)
                 # Formula: F_f = F_c + alpha * Attention(F_c, F_l) + F_l
                 output_stage1 = output_stage1_rgb + (self.alpha * attn_out) + output_stage1_lidar + previous_stage
-            elif self.fusion_strategy == 'spatial_fusion':
-                output_stage1_rgb = self.res_conv_rgb(rgb)
-                output_stage1_lidar = self.res_conv_xyz(lidar)
-                # Apply layer normalization
-                output_stage1_rgb = self.ln_rgb(output_stage1_rgb.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-                output_stage1_lidar = self.ln_lidar(output_stage1_lidar.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-                
-                # Spatial adaptive weighting
-                beta_map = self.beta_attn(torch.cat([output_stage1_rgb, output_stage1_lidar], dim=1))  # [B, C, H, W]
-                weighted_avg = (1 - beta_map) * output_stage1_rgb + beta_map * output_stage1_lidar
-                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * weighted_avg
             elif self.fusion_strategy == 'gmf':
                 output_stage1_rgb = self.res_conv_rgb(rgb)
                 output_stage1_lidar = self.res_conv_xyz(lidar)
@@ -237,34 +232,59 @@ class Fusion(nn.Module):
                 rgb_mod = gamma * output_stage1_rgb + beta
                 # Gated residual
                 output_stage1 = rgb_mod + output_stage1_lidar + previous_stage + self.alpha * (rgb_mod + output_stage1_lidar)
-            elif self.fusion_strategy == 'gated_average':
-                output_stage1_rgb = self.res_conv_rgb(rgb)
-                output_stage1_lidar = self.res_conv_xyz(lidar)
-                simple_avg = (output_stage1_rgb + output_stage1_lidar) / 2
-                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * simple_avg
-            elif self.fusion_strategy == 'residual_average':
-                output_stage1_rgb = self.res_conv_rgb(rgb)
-                output_stage1_lidar = self.res_conv_xyz(lidar)
-                simple_avg = (output_stage1_rgb + output_stage1_lidar) / 2
-                output_stage1 = simple_avg + previous_stage
-            elif self.fusion_strategy == 'residual_average_no_prev':
-                output_stage1_rgb = self.res_conv_rgb(rgb)
-                output_stage1_lidar = self.res_conv_xyz(lidar)
-                output_stage1 = (output_stage1_rgb + output_stage1_lidar) / 2
-            elif self.fusion_strategy == 'weighted_average':
-                output_stage1_rgb = self.res_conv_rgb(rgb)
-                output_stage1_lidar = self.res_conv_xyz(lidar)
-                weighted_avg = (1 - self.beta) * output_stage1_rgb + self.beta * output_stage1_lidar
-                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * weighted_avg
+            elif self.fusion_strategy == 'adder_fusion':
+                # True simple average fusion without resblocks and previous stage
+                output_stage1 = rgb + lidar
             elif self.fusion_strategy == 'simple_average':
                 # True simple average fusion without resblocks and previous stage
                 output_stage1 = (rgb + lidar) / 2
+            elif self.fusion_strategy == 'simple_average_w_prev':
+                output_stage1 = (rgb + lidar) + previous_stage
+            elif self.fusion_strategy == 'resconv_average':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                output_stage1 = (output_stage1_rgb + output_stage1_lidar)     
+            elif self.fusion_strategy == 'residual_average':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                simple_avg = (output_stage1_rgb + output_stage1_lidar)
+                output_stage1 = simple_avg + previous_stage
+            elif self.fusion_strategy == 'gated_average':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                simple_avg = (output_stage1_rgb + output_stage1_lidar)
+                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * simple_avg
+            elif self.fusion_strategy == 'ln_gated_average':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                # Apply layer normalization
+                output_stage1_rgb = self.ln_rgb(output_stage1_rgb.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                output_stage1_lidar = self.ln_lidar(output_stage1_lidar.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                simple_avg = (output_stage1_rgb + output_stage1_lidar)
+                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * simple_avg
+            elif self.fusion_strategy == 'spatial_fusion':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                # Apply layer normalization
+                output_stage1_rgb = self.ln_rgb(output_stage1_rgb.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                output_stage1_lidar = self.ln_lidar(output_stage1_lidar.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                
+                # Spatial adaptive weighting
+                beta_map = self.beta_attn(torch.cat([output_stage1_rgb, output_stage1_lidar], dim=1))  # [B, C, H, W]
+                weighted_avg = (1 - beta_map) * output_stage1_rgb + beta_map * output_stage1_lidar
+                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + self.alpha * weighted_avg
+            elif self.fusion_strategy == 'sigmoid_gated_average':
+                output_stage1_rgb = self.res_conv_rgb(rgb)
+                output_stage1_lidar = self.res_conv_xyz(lidar)
+                simple_avg = (output_stage1_rgb + output_stage1_lidar)
+                alpha_gate = torch.sigmoid(self.alpha)  # Constrain alpha to [0,1] for stable gating
+                output_stage1 = output_stage1_rgb + output_stage1_lidar + previous_stage + alpha_gate * simple_avg
             else:
                 raise ValueError(f"Unknown fusion strategy: {self.fusion_strategy}")
         
         output_stage2 = self.res_conv2(output_stage1)
         
-        # output_stage2 = nn.functional.interpolate(output_stage2, scale_factor=2, mode="bilinear", align_corners=True)
+        #output_stage2 = nn.functional.interpolate(output_stage2, scale_factor=2, mode="bilinear", align_corners=True)
         return output_stage2
 
 
