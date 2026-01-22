@@ -6,13 +6,12 @@ This repository contains the implementation for the paper "CLFTv2: Hierarchical 
 
 Resilient semantic segmentation in autonomous driving relies on effectively fusing the complementary information from camera and LiDAR sensors. 
 While recent Transformer-based fusion architectures surpass CNNs in global context modeling, standard Vision Transformers (ViT) are hindered by quadratic computational complexity and fixed-scale processing, which limits their ability to resolve small, distant objects.
-To address these challenges, we present CLFTv2, a hierarchical multi-modal framework built upon the Swin Transformer. 
-By utilizing shifted window attention, our approach achieves linear complexity, enabling efficient processing of high-resolution sensor data.
-We introduce a novel Spatial Reassembling Module and Gated Residual Fusion Block that dynamically align sparse geometric features with dense semantic maps across multiple scales. 
-This design specifically targets the detection of Vulnerable Road Users (VRUs) by preserving fine-grained details often lost in deep networks.
-Furthermore, we address the label scarcity in the Zenseact Open Dataset (ZOD) by generating dense segmentation masks via the Segment Anything Model (SAM), facilitating pixel-level supervision.
-Extensive experiments show that CLFTv2 achieves state-of-the-art performance with a foreground mIoU of 93.1\% on the Waymo Open Dataset and 83.3\% on ZOD, significantly outperforming previous baselines.
-Notably, our specialized fusion yields substantial safety improvements, achieving 91.2\% and 75.3\% IoU for pedestrians on Waymo and ZOD, respectively.
+To address these challenges, we present CLFTv2, a practical multi-modal framework that adapts the Swin Transformer architecture for camera-LiDAR fusion. 
+By leveraging shifted window attention, our approach achieves linear complexity scaling with input size, enabling scalable processing of high-resolution sensor data.
+We employ hierarchical feature pyramids and progressive fusion strategies to integrate sparse geometric features with dense semantic maps across multiple scales, specifically targeting the detection of Vulnerable Road Users (VRUs).
+Furthermore, we address the label scarcity in the Zenseact Open Dataset (ZOD) by developing an automated annotation pipeline using the Segment Anything Model (SAM) to generate dense segmentation masks from bounding boxes.
+Extensive experiments show that CLFTv2 achieves strong performance with a foreground mIoU of 93.5\% on the Waymo Open Dataset and 83.6\% on ZOD, outperforming previous baselines.
+Notably, our fusion approach yields substantial safety improvements, achieving up to 91.2\% IoU for pedestrians on Waymo and 75.3\% on ZOD, respectively.
 Our code and data processing pipeline are publicly released to support further research.
 
 ## Setup Virtual Environment
