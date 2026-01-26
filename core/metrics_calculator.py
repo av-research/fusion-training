@@ -105,7 +105,10 @@ class MetricsCalculator:
             'overlap': torch.zeros(self.num_eval_classes).to(device),
             'pred': torch.zeros(self.num_eval_classes).to(device),
             'label': torch.zeros(self.num_eval_classes).to(device),
-            'union': torch.zeros(self.num_eval_classes).to(device)        }
+            'union': torch.zeros(self.num_eval_classes).to(device),
+            'pixel_correct': torch.tensor(0.0).to(device),
+            'pixel_total': torch.tensor(0.0).to(device)
+        }
     
     def update_accumulators(self, accumulators, output_seg, anno, num_classes):
         """Update metric accumulators with batch results."""
@@ -116,6 +119,14 @@ class MetricsCalculator:
         accumulators['pred'] += batch_pred
         accumulators['label'] += batch_label
         accumulators['union'] += batch_union
+        
+        # Calculate pixel accuracy
+        _, pred_indices = torch.max(output_seg, dim=1)
+        correct_pixels = (pred_indices == anno).sum().float()
+        total_pixels = torch.tensor(anno.numel(), dtype=torch.float, device=accumulators['pixel_correct'].device)
+        
+        accumulators['pixel_correct'] += correct_pixels
+        accumulators['pixel_total'] += total_pixels
         
         return batch_overlap, batch_pred, batch_label, batch_union
     
@@ -129,6 +140,15 @@ class MetricsCalculator:
         recall = accumulators['overlap'] / (accumulators['label'] + 1e-6)
         f1 = 2 * precision * recall / (precision + recall + 1e-6)
         
+        # Pixel accuracy
+        pixel_accuracy = accumulators['pixel_correct'] / (accumulators['pixel_total'] + 1e-6)
+        
+        # Mean accuracy (average of per-class accuracies)
+        # Per-class accuracy = recall for each class
+        mean_accuracy = torch.mean(recall)
+        
+        # Dice score (F1 score) - already calculated as f1
+        
         # Average loss
         if num_batches > 0:
             epoch_loss = total_loss / num_batches
@@ -140,6 +160,9 @@ class MetricsCalculator:
             'precision': precision,
             'recall': recall,
             'f1': f1,
+            'pixel_accuracy': pixel_accuracy.item(),
+            'mean_accuracy': mean_accuracy.item(),
+            'dice_score': torch.mean(f1).item(),  # Mean Dice score
             'epoch_loss': epoch_loss,
             'mean_iou': torch.mean(epoch_IoU).item()
         }
@@ -170,14 +193,23 @@ class MetricsCalculator:
         
         results["train"]["loss"] = self.sanitize_value(train_metrics["epoch_loss"])
         results["train"]["mean_iou"] = self.sanitize_value(train_metrics["mean_iou"])
+        results["train"]["pixel_accuracy"] = self.sanitize_value(train_metrics["pixel_accuracy"])
+        results["train"]["mean_accuracy"] = self.sanitize_value(train_metrics["mean_accuracy"])
+        results["train"]["dice_score"] = self.sanitize_value(train_metrics["dice_score"])
         results["val"]["loss"] = self.sanitize_value(val_metrics["epoch_loss"])
         results["val"]["mean_iou"] = self.sanitize_value(val_metrics["mean_iou"])
+        results["val"]["pixel_accuracy"] = self.sanitize_value(val_metrics["pixel_accuracy"])
+        results["val"]["mean_accuracy"] = self.sanitize_value(val_metrics["mean_accuracy"])
+        results["val"]["dice_score"] = self.sanitize_value(val_metrics["dice_score"])
         
         return results
     
     def print_metrics(self, metrics, prefix="", accumulators=None):
         """Print metrics in a formatted way."""
         print(f'{prefix}Mean IoU: {metrics["mean_iou"]:.4f}')
+        print(f'{prefix}Pixel Accuracy: {metrics["pixel_accuracy"]:.4f}')
+        print(f'{prefix}Mean Accuracy: {metrics["mean_accuracy"]:.4f}')
+        print(f'{prefix}Dice Score: {metrics["dice_score"]:.4f}')
         for i, cls in enumerate(self.eval_classes):
             print(f'{prefix}{cls} IoU: {metrics["epoch_IoU"][i]:.4f}')
         print(f'{prefix}Average Loss: {metrics["epoch_loss"]:.4f}')

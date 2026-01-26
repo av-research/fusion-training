@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import os
+import json
 import torch
 import numpy as np
 import shutil
@@ -171,13 +172,72 @@ def get_all_checkpoint_paths(config, ignore_model_path=False):
     sorted_files = sorted(files, key=get_checkpoint_num)
     return sorted_files
 
-def get_model_path(config):
-    """Get the latest checkpoint file path."""
-    checkpoint_paths = get_all_checkpoint_paths(config)
-    if not checkpoint_paths:
-        return False
-    # Return the latest checkpoint (last in sorted list)
-    return checkpoint_paths[-1]
+def get_best_checkpoint_path(config):
+    """Find the checkpoint with the best validation mIoU."""
+    import re
+    logdir = config['Log']['logdir']
+    epochs_dir = os.path.join(logdir, 'epochs')
+    
+    if not os.path.exists(epochs_dir):
+        print(f"Epochs directory not found: {epochs_dir}")
+        return None
+    
+    best_epoch = None
+    best_miou = -1.0
+    
+    for file in os.listdir(epochs_dir):
+        if file.endswith('.json'):
+            filepath = os.path.join(epochs_dir, file)
+            try:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+                    val_miou = data['results']['val'].get('mean_iou', 0)
+                    if val_miou > best_miou:
+                        best_miou = val_miou
+                        # Extract epoch and uuid from filename
+                        match = re.search(r'epoch_(\d+)_([a-f0-9\-]+)\.json', file)
+                        if match:
+                            epoch_num = int(match.group(1))
+                            epoch_uuid = match.group(2)
+                            best_epoch = f"epoch_{epoch_num}_{epoch_uuid}.pth"
+            except Exception as e:
+                print(f"Error reading {file}: {e}")
+                continue
+    
+    if best_epoch:
+        checkpoint_path = os.path.join(logdir, 'checkpoints', best_epoch)
+        if os.path.exists(checkpoint_path):
+            print(f"Found best checkpoint: {checkpoint_path} (val mIoU: {best_miou:.4f})")
+            return checkpoint_path
+        else:
+            print(f"Best checkpoint file not found: {checkpoint_path}")
+    
+    return None
+
+def get_model_path(config, best=False):
+    """Get the model checkpoint file path. If best=True, get the best checkpoint."""
+    if best:
+        return get_best_checkpoint_path(config)
+    else:
+        checkpoint_paths = get_all_checkpoint_paths(config)
+        if not checkpoint_paths:
+            return False
+        # Return the latest checkpoint (last in sorted list)
+        return checkpoint_paths[-1]
+
+def get_checkpoint_path_with_fallback(config):
+    """Get the best checkpoint path, or fall back to the latest checkpoint if best is not found."""
+    # Try to get the best checkpoint first
+    checkpoint_path = get_best_checkpoint_path(config)
+    if checkpoint_path:
+        return checkpoint_path
+    
+    # Fall back to the latest checkpoint
+    checkpoint_paths = get_all_checkpoint_paths(config, ignore_model_path=True)
+    if checkpoint_paths:
+        return checkpoint_paths[-1]  # Latest checkpoint
+    
+    return None
 
 def save_model_dict(config, epoch, model, optimizer, epoch_uuid=None):
     creat_dir(config)
@@ -365,3 +425,34 @@ def sanitize_for_json(data):
     elif isinstance(data, (np.int32, np.int64)):
         return int(data)
     return data
+
+
+def get_training_uuid_from_logs(log_dir):
+    """Extract training_uuid and vision_training_id from existing epoch log files."""
+    epochs_dir = os.path.abspath(os.path.join(log_dir, 'epochs'))
+    if not os.path.exists(epochs_dir):
+        return None, None
+    
+    # Find all epoch JSON files
+    epoch_files = glob.glob(os.path.join(epochs_dir, 'epoch_*.json'))
+    if not epoch_files:
+        return None, None
+    
+    # Get the most recent epoch file
+    epoch_files.sort()
+    latest_epoch_file = epoch_files[-1]
+    
+    try:
+        with open(latest_epoch_file, 'r') as f:
+            epoch_data = json.load(f)
+        training_uuid = epoch_data.get('training_uuid')
+        vision_training_id = epoch_data.get('vision_training_id')
+        if training_uuid:
+            print(f"Found existing training_uuid from logs: {training_uuid}")
+            if vision_training_id:
+                print(f"Found existing vision_training_id from logs: {vision_training_id}")
+            return training_uuid, vision_training_id
+    except Exception as e:
+        print(f"Warning: Could not read training data from {latest_epoch_file}: {e}")
+    
+    return None, None

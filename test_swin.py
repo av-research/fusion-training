@@ -11,13 +11,14 @@ import uuid
 import datetime
 import torch
 import numpy as np
+import re
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from core.advanced_model_builder import AdvancedModelBuilder
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
-from utils.helpers import relabel_annotation, get_all_checkpoint_paths, sanitize_for_json
+from utils.helpers import get_model_path, get_checkpoint_path_with_fallback, get_all_checkpoint_paths, relabel_annotation
 from utils.test_aggregator import test_checkpoint_and_save
 
 
@@ -130,26 +131,45 @@ def _voc_ap(recall, precision):
     return ap
 
 
-def extract_epoch_info(model_path):
-    """Extract epoch number and UUID from model path."""
-    import re
-    epoch_match = re.search(r'epoch_(\d+)_([a-f0-9\-]+)\.pth', model_path)
-    if epoch_match:
-        return int(epoch_match.group(1)), epoch_match.group(2)
+def get_best_checkpoint_path(config):
+    """Find the checkpoint with the best validation mIoU."""
+    logdir = config['Log']['logdir']
+    epochs_dir = os.path.join(logdir, 'epochs')
     
-    # Fallback for old checkpoint format
-    epoch_match = re.search(r'checkpoint_(\d+)\.pth', model_path)
-    if epoch_match:
-        return int(epoch_match.group(1)), None
+    if not os.path.exists(epochs_dir):
+        print(f"Epochs directory not found: {epochs_dir}")
+        return None
     
-    # Fallback for best_model format
-    best_match = re.search(r'best_model_([a-f0-9\-]+)\.pth', model_path)
-    if best_match:
-        return 0, best_match.group(1)
+    best_epoch = None
+    best_miou = -1.0
     
-    return 0, None
-
-
+    for file in os.listdir(epochs_dir):
+        if file.endswith('.json'):
+            filepath = os.path.join(epochs_dir, file)
+            try:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+                    val_miou = data['results']['val'].get('mean_iou', 0)
+                    if val_miou > best_miou:
+                        best_miou = val_miou
+                        # Extract epoch and uuid from filename
+                        match = re.search(r'epoch_(\d+)_([a-f0-9\-]+)\.json', file)
+                        if match:
+                            epoch_num = int(match.group(1))
+                            epoch_uuid = match.group(2)
+                            best_epoch = f"epoch_{epoch_num}_{epoch_uuid}.pth"
+            except Exception as e:
+                print(f"Error reading {file}: {e}")
+                continue
+    
+    if best_epoch:
+        checkpoint_path = os.path.join(logdir, 'checkpoints', best_epoch)
+        if os.path.exists(checkpoint_path):
+            print(f"Found best checkpoint: {checkpoint_path} (val mIoU: {best_miou:.4f})")
+            return checkpoint_path
+        else:
+            print(f"Best checkpoint file not found: {checkpoint_path}")
+    
 def calculate_num_classes(config):
     """Calculate number of training classes."""
     return len(config['Dataset']['train_classes'])
@@ -234,10 +254,16 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
     all_predictions = {cls: [] for cls in eval_classes}
     all_targets = {cls: [] for cls in eval_classes}
 
+    # Initialize accumulators for additional metrics
+    pixel_correct = 0.0
+    pixel_total = 0.0
+    class_pixels = torch.zeros(num_eval_classes)  # For FWIoU
+    confusion_matrix = torch.zeros(num_classes, num_classes, dtype=torch.long, device=device)  # Include background
+
     # Testing loop
     model.eval()
     with torch.no_grad():
-        for batch_idx, batch in enumerate(tqdm(val_loader, desc=f"Testing {weather_condition}")):
+        for _, batch in enumerate(tqdm(val_loader, desc=f"Testing {weather_condition}")):
             images = batch['rgb'].to(device)
             lidar = batch['lidar'].to(device)
             targets = batch['anno'].to(device)
@@ -258,26 +284,46 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
             # Store predictions and targets for AP calculation
             _store_predictions_for_ap(outputs, targets, all_predictions, all_targets, eval_classes, config)
 
+            # Update pixel accuracy
+            correct_pixels = (preds == targets).sum().item()
+            total_pixels = targets.numel()
+            pixel_correct += correct_pixels
+            pixel_total += total_pixels
+
+            # Update class pixel counts for FWIoU
+            for i in range(num_eval_classes):
+                class_pixels[i] += (targets == (i + 1)).sum().item()  # eval classes start from 1
+
+            # Update confusion matrix (vectorized)
+            indices = num_classes * targets.flatten() + preds.flatten()
+            confusion_matrix += torch.bincount(indices, minlength=num_classes**2).reshape(num_classes, num_classes)
+
     # Calculate final metrics
     final_metrics = metrics_calculator.compute()
 
+    # Calculate additional metrics
+    pixel_accuracy = pixel_correct / pixel_total if pixel_total > 0 else 0.0
+    mean_accuracy = final_metrics['mean_recall']  # Mean of per-class recalls
+    fw_iou = 0.0
+    if class_pixels.sum() > 0:
+        weights = class_pixels / class_pixels.sum()
+        fw_iou = (weights * final_metrics['iou']).sum().item()
+
     # Print results for this weather condition
     print(f"\n{weather_condition} Results:")
-    eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
-    print(f"mIoU: {final_metrics['iou'].mean().item():.4f}")
-    print(f"Mean Precision: {final_metrics['precision'].mean().item():.4f}")
-    print(f"Mean Recall: {final_metrics['recall'].mean().item():.4f}")
-    print(f"Mean F1: {final_metrics['f1'].mean().item():.4f}")
+    print(f"mIoU (foreground): {final_metrics['mean_iou']:.4f}")
+    print(f"Mean Accuracy: {mean_accuracy:.4f}")
+    print(f"Frequency-Weighted IoU: {fw_iou:.4f}")
+    print(f"Pixel Accuracy: {pixel_accuracy:.4f} (note: dominated by background)")
     
-    print("\nPer-class Metrics:")
+    print("\nPer-class Dice/F1:")
     for i, cls_name in enumerate(eval_classes):
-        print(f"  {cls_name} IoU: {final_metrics['iou'][i].item():.4f}")
+        print(f"  {cls_name} F1: {final_metrics['f1'][i].item():.4f}")
 
     # Prepare results
     results = {}
     
     # Add per-class metrics
-    eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
     for i, cls_name in enumerate(eval_classes):
         # Calculate AP for this class
         ap = _compute_ap_for_class(cls_name, all_predictions, all_targets)
@@ -288,6 +334,15 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
             "f1_score": final_metrics['f1'][i].item(),
             "ap": ap
         }
+
+    # Add overall metrics
+    results['overall'] = {
+        'mIoU_foreground': final_metrics['mean_iou'],
+        'mean_accuracy': mean_accuracy,
+        'fw_iou': fw_iou,
+        'pixel_accuracy': pixel_accuracy,
+        'confusion_matrix': confusion_matrix.cpu().tolist()
+    }
 
     # Now print the Mean AP after results is populated
     print(f"Mean AP: {np.mean([results[cls]['ap'] for cls in eval_classes]):.4f}")
@@ -306,7 +361,7 @@ def test_single_checkpoint(checkpoint_path, config, device, weather_conditions):
         weather_conditions: List of weather condition names
 
     Returns:
-        Dict with results for each weather condition
+        Dict with results for each weather condition and overall
     """
     # Build model for this checkpoint
     model_builder = AdvancedModelBuilder(config, device)
@@ -314,22 +369,35 @@ def test_single_checkpoint(checkpoint_path, config, device, weather_conditions):
 
     if os.path.exists(checkpoint_path):
         model_builder.load_checkpoint(model, checkpoint_path)
-        print(f"Loaded checkpoint from {checkpoint_path}")
     else:
         print(f"Warning: Checkpoint not found at {checkpoint_path}, using untrained model")
 
     # Test on each weather condition
     checkpoint_results = {}
+
     for weather in weather_conditions:
         results = test_model_on_weather(config, model, device, weather, checkpoint_path)
         checkpoint_results[weather] = results
+
+    # Compute overall metrics as averages across conditions
+    overall_miou = np.mean([checkpoint_results[w]['overall']['mIoU_foreground'] for w in weather_conditions])
+    overall_mean_acc = np.mean([checkpoint_results[w]['overall']['mean_accuracy'] for w in weather_conditions])
+    overall_fw_iou = np.mean([checkpoint_results[w]['overall']['fw_iou'] for w in weather_conditions])
+    overall_pixel_acc = np.mean([checkpoint_results[w]['overall']['pixel_accuracy'] for w in weather_conditions])
+
+    checkpoint_results['overall'] = {
+        'mIoU_foreground': overall_miou,
+        'mean_accuracy': overall_mean_acc,
+        'fw_iou': overall_fw_iou,
+        'pixel_accuracy': overall_pixel_acc
+    }
 
     return checkpoint_results
 
 
 def main():
     parser = argparse.ArgumentParser(description="Test SwinTransformerFusion on ZOD weather conditions")
-    parser.add_argument('--config', type=str, required=True, help='Path to config JSON file')
+    parser.add_argument('-c', '--config', type=str, required=True, help='Path to config JSON file')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to model checkpoint')
     parser.add_argument('--output', type=str, default='test_results.json', help='Output file for results')
     args = parser.parse_args()
@@ -340,12 +408,17 @@ def main():
     # Setup device
     device = torch.device(config['General']['device'])
 
-    # Get all checkpoint paths
+    # Get checkpoint paths
     if args.checkpoint:
         checkpoint_paths = [args.checkpoint]
     else:
-        checkpoint_paths = get_all_checkpoint_paths(config, ignore_model_path=True)
-
+        # Find the best checkpoint automatically (with fallback to latest)
+        checkpoint_path = get_checkpoint_path_with_fallback(config)
+        if checkpoint_path:
+            checkpoint_paths = [checkpoint_path]
+        else:
+            checkpoint_paths = []
+    
     if not checkpoint_paths:
         print("No checkpoints found. Please train the model first.")
         return

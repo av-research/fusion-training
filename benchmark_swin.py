@@ -505,6 +505,14 @@ class SwinBenchmarker:
         model = model_builder.build_model()
         model.to(self.device)
 
+        # Load best checkpoint if available, otherwise try latest checkpoint
+        from utils.helpers import get_checkpoint_path_with_fallback
+        checkpoint_path = get_checkpoint_path_with_fallback(config)
+        if checkpoint_path:
+            model_builder.load_checkpoint(model, checkpoint_path)
+        else:
+            print("No checkpoint found, using untrained model")
+
         # Get model info
         model_info = self._count_parameters(model)
         model_info.update({

@@ -22,7 +22,7 @@ from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
 from integrations.training_logger import generate_training_uuid, log_epoch_results
 from integrations.vision_service import create_training, create_config, get_training_by_uuid, send_epoch_results_from_file
-from utils.helpers import get_model_path, manage_checkpoints_by_miou
+from utils.helpers import get_model_path, manage_checkpoints_by_miou, get_training_uuid_from_logs
 from utils.system_monitor import get_epoch_system_snapshot, print_system_info
 
 
@@ -125,33 +125,6 @@ def setup_vision_service(config, training_uuid):
             return vision_training_id
     
     return None
-
-
-def get_training_uuid_from_logs(log_dir):
-    """Extract training_uuid from existing epoch log files."""
-    epochs_dir = os.path.join(log_dir, 'epochs')
-    if not os.path.exists(epochs_dir):
-        return None
-    
-    epoch_files = glob.glob(os.path.join(epochs_dir, 'epoch_*.json'))
-    if not epoch_files:
-        return None
-    
-    epoch_files.sort()
-    latest_epoch_file = epoch_files[-1]
-    
-    try:
-        with open(latest_epoch_file, 'r') as f:
-            epoch_data = json.load(f)
-        training_uuid = epoch_data.get('training_uuid')
-        if training_uuid:
-            print(f"Found existing training_uuid from logs: {training_uuid}")
-            return training_uuid
-    except Exception as e:
-        print(f"Warning: Could not read training_uuid from {latest_epoch_file}: {e}")
-    
-    return None
-
 
 def relabel_classes(anno, config):
     """Relabel ground truth annotations according to train_classes mapping."""
@@ -338,13 +311,18 @@ def main():
     multiprocessing.set_start_method('spawn', force=True)
     
     # Generate or retrieve training UUID
+    vision_training_id = None
     if config['General']['resume_training']:
-        training_uuid = get_training_uuid_from_logs(config['Log']['logdir'])
+        # Try to get existing training_uuid and vision_training_id from logs
+        training_uuid, vision_training_id = get_training_uuid_from_logs(config['Log']['logdir'])
         if training_uuid:
             print(f"Resuming training with existing UUID: {training_uuid}")
+            if vision_training_id:
+                print(f"Using existing vision training ID: {vision_training_id}")
         else:
             print("Warning: Could not find existing training_uuid, generating new one")
             training_uuid = generate_training_uuid()
+            print(f"New Training UUID: {training_uuid}")
     else:
         training_uuid = generate_training_uuid()
         print(f"Training UUID: {training_uuid}")
@@ -392,13 +370,17 @@ def main():
     metrics_calc = MetricsCalculator(config, num_eval_classes, find_overlap_func)
     
     # Setup vision service
-    vision_training_id = None
     if training_uuid:
-        if config['General']['resume_training']:
+        if config['General']['resume_training'] and vision_training_id is None:
+            # Look up existing training by UUID only if we don't have it from logs
+            print("Resuming training - looking up existing training record...")
             vision_training_id = get_training_by_uuid(training_uuid)
             if vision_training_id:
                 print(f"Found existing training in vision service: {vision_training_id}")
-        else:
+            else:
+                print("Warning: Could not find existing training in vision service")
+        elif not config['General']['resume_training']:
+            # Create new training
             vision_training_id = setup_vision_service(config, training_uuid)
     
     # Load checkpoint if resuming
@@ -485,7 +467,8 @@ def main():
             log_dir=log_dir,
             learning_rate=optimizer.param_groups[0]['lr'],
             epoch_time=epoch_time,
-            system_info=system_snapshot
+            system_info=system_snapshot,
+            vision_training_id=vision_training_id
         )
         
         # Extract epoch_uuid from the logged file path
