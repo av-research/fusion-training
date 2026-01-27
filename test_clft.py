@@ -19,7 +19,7 @@ from core.metrics_calculator import MetricsCalculator
 from core.testing_engine import TestingEngine
 from utils.metrics import find_overlap_exclude_bg_ignore
 from integrations.vision_service import send_test_results_from_file
-from utils.helpers import get_all_checkpoint_paths, sanitize_for_json
+from utils.helpers import get_all_checkpoint_paths, sanitize_for_json, get_checkpoint_path_with_fallback
 
 
 def calculate_num_classes(config):
@@ -174,7 +174,7 @@ def main():
     parser.add_argument('-c', '--config', type=str, required=False,
                        default='config.json', help='Path to config file')
     parser.add_argument('--checkpoint', type=str, default=None,
-                       help='Path to specific model checkpoint (optional, tests all if not specified)')
+                       help='Path to specific model checkpoint (optional, tests best checkpoint if not specified)')
     args = parser.parse_args()
     
     # Load configuration
@@ -189,76 +189,73 @@ def main():
                          if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     
-    # Get checkpoint paths
+    # Get checkpoint path
     if args.checkpoint:
-        checkpoint_paths = [args.checkpoint]
+        checkpoint_path = args.checkpoint
     else:
-        checkpoint_paths = get_all_checkpoint_paths(config, ignore_model_path=True)
+        # Find the best checkpoint automatically (with fallback to latest)
+        checkpoint_path = get_checkpoint_path_with_fallback(config)
     
-    if not checkpoint_paths:
+    if not checkpoint_path:
         print("No model checkpoints found. Please train the model first.")
         exit(1)
     
-    print(f"Found {len(checkpoint_paths)} checkpoints to test")
+    print(f"Testing checkpoint: {checkpoint_path}")
     
-    # Test each checkpoint
-    for i, model_path in enumerate(checkpoint_paths):
-        print(f"\n{'='*50}")
-        print(f"Testing checkpoint {i+1}/{len(checkpoint_paths)}: {model_path}")
-        print(f"{'='*50}")
-        
-        # Extract epoch info
-        epoch_num, epoch_uuid = extract_epoch_info(model_path)
-        test_uuid = str(uuid.uuid4())
-        
-        # Calculate class counts
-        num_classes = calculate_num_classes(config)
-        num_eval_classes = calculate_num_eval_classes(config, num_classes)
-        print(f"Total classes: {num_classes}, Evaluation classes: {num_eval_classes}")
-        
-        # Build and load model
-        model_builder = ModelBuilder(config, device)
-        model = model_builder.build_model()
-        model, _ = model_builder.load_checkpoint(model, model_path)
-        model.eval()
-        
-        # Setup overlap function
-        find_overlap_func = setup_overlap_function(config)
-        
-        # Setup metrics calculator
-        metrics_calc = MetricsCalculator(config, num_eval_classes, find_overlap_func)
-        
-        # Setup testing engine
-        tester = TestingEngine(model, metrics_calc, config, device)
-        
-        # Define test files
-        test_data_path = config['CLI']['path']
-        test_data_files = [
-            'test_day_fair.txt',
-            'test_night_fair.txt',
-            'test_day_rain.txt',
-            'test_night_rain.txt',
-            'test_snow.txt'
-        ]
-        
-        # Run test suite
-        all_results = run_test_suite(tester, config, test_data_files, test_data_path, num_classes)
-        
-        # Save results
-        results_file = save_test_results(config, all_results, epoch_num, epoch_uuid, test_uuid)
-        
-        # Upload to vision service
-        print("Uploading test results to vision service...")
-        upload_success = send_test_results_from_file(results_file)
-        if upload_success:
-            print("✅ Test results successfully uploaded to vision service")
-        else:
-            print("❌ Failed to upload test results to vision service")
-        
-        print(f'Completed testing checkpoint {i+1}/{len(checkpoint_paths)}')
-    
+    # Test the checkpoint
     print(f"\n{'='*50}")
-    print(f"Completed testing all {len(checkpoint_paths)} checkpoints")
+    print(f"Testing checkpoint: {checkpoint_path}")
+    print(f"{'='*50}")
+    
+    # Extract epoch info
+    epoch_num, epoch_uuid = extract_epoch_info(checkpoint_path)
+    test_uuid = str(uuid.uuid4())
+    
+    # Calculate class counts
+    num_classes = calculate_num_classes(config)
+    num_eval_classes = calculate_num_eval_classes(config, num_classes)
+    print(f"Total classes: {num_classes}, Evaluation classes: {num_eval_classes}")
+    
+    # Build and load model
+    model_builder = ModelBuilder(config, device)
+    model = model_builder.build_model()
+    model, _ = model_builder.load_checkpoint(model, checkpoint_path)
+    model.eval()
+    
+    # Setup overlap function
+    find_overlap_func = setup_overlap_function(config)
+    
+    # Setup metrics calculator
+    metrics_calc = MetricsCalculator(config, num_eval_classes, find_overlap_func)
+    
+    # Setup testing engine
+    tester = TestingEngine(model, metrics_calc, config, device)
+    
+    # Define test files
+    test_data_path = config['CLI']['path']
+    test_data_files = [
+        'test_day_fair.txt',
+        'test_night_fair.txt',
+        'test_day_rain.txt',
+        'test_night_rain.txt',
+        'test_snow.txt'
+    ]
+    
+    # Run test suite
+    all_results = run_test_suite(tester, config, test_data_files, test_data_path, num_classes)
+    
+    # Save results
+    results_file = save_test_results(config, all_results, epoch_num, epoch_uuid, test_uuid)
+    
+    # Upload to vision service
+    print("Uploading test results to vision service...")
+    upload_success = send_test_results_from_file(results_file)
+    if upload_success:
+        print("✅ Test results successfully uploaded to vision service")
+    else:
+        print("❌ Failed to upload test results to vision service")
+    
+    print(f'Completed testing checkpoint')
 
 
 if __name__ == '__main__':

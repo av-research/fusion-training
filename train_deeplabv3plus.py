@@ -21,7 +21,7 @@ from models.deeplabv3plus import build_deeplabv3plus
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
 from integrations.training_logger import generate_training_uuid, log_epoch_results
-from integrations.vision_service import create_training, create_config, get_training_by_uuid, send_epoch_results_from_file
+from integrations.vision_service import create_training, create_config, get_training_by_uuid
 from utils.helpers import get_model_path, manage_checkpoints_by_miou, get_training_uuid_from_logs
 from utils.system_monitor import get_epoch_system_snapshot, print_system_info
 
@@ -474,9 +474,7 @@ def main():
         # Extract epoch_uuid from the logged file path
         epoch_uuid = os.path.basename(epoch_file).replace(f'epoch_{epoch}_', '').replace('.json', '')
         
-        # Send to vision service if available
-        if vision_training_id:
-            send_epoch_results_from_file(vision_training_id, epoch, epoch_file)
+        # Vision service upload is already handled by log_epoch_results above
         
         # Save checkpoint every epoch
         save_checkpoint(model, optimizer, scheduler, epoch, config, log_dir, epoch_uuid)
@@ -488,21 +486,7 @@ def main():
         if val_metrics['mean_iou'] > best_val_iou:
             best_val_iou = val_metrics['mean_iou']
             patience_counter = 0
-            # Save best model
-            checkpoint_dir = os.path.join(log_dir, 'checkpoints')
-            os.makedirs(checkpoint_dir, exist_ok=True)
-            best_path = os.path.join(checkpoint_dir, f'best_model_{epoch_uuid}.pth')
-            best_checkpoint = {
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-                'config': config,
-                'mean_iou': best_val_iou
-            }
-            if scheduler is not None:
-                best_checkpoint['scheduler_state_dict'] = scheduler.state_dict()
-            torch.save(best_checkpoint, best_path)
-            print(f"Saved new best model with mIoU: {best_val_iou:.4f}")
+            print(f"New best mIoU: {best_val_iou:.4f}")
         else:
             patience_counter += 1
             print(f"No improvement. Patience: {patience_counter}/{early_stop_patience}")

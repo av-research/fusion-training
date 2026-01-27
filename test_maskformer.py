@@ -7,8 +7,6 @@ import os
 import json
 import argparse
 import time
-import uuid
-import datetime
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
@@ -17,7 +15,7 @@ from tqdm import tqdm
 from models.maskformer_fusion import MaskFormerFusion
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
-from utils.helpers import relabel_annotation, get_all_checkpoint_paths, sanitize_for_json
+from utils.helpers import relabel_annotation, get_checkpoint_path_with_fallback
 from utils.test_aggregator import test_checkpoint_and_save
 
 
@@ -130,26 +128,6 @@ def _voc_ap(recall, precision):
     return ap
 
 
-def extract_epoch_info(model_path):
-    """Extract epoch number and UUID from model path."""
-    import re
-    epoch_match = re.search(r'epoch_(\d+)_([a-f0-9\-]+)\.pth', model_path)
-    if epoch_match:
-        return int(epoch_match.group(1)), epoch_match.group(2)
-    
-    # Fallback for old checkpoint format
-    epoch_match = re.search(r'checkpoint_(\d+)\.pth', model_path)
-    if epoch_match:
-        return int(epoch_match.group(1)), None
-    
-    # Fallback for best_model format
-    best_match = re.search(r'best_model_([a-f0-9\-]+)\.pth', model_path)
-    if best_match:
-        return 0, best_match.group(1)
-    
-    return 0, None
-
-
 def calculate_num_classes(config):
     """Calculate number of training classes."""
     return len(config['Dataset']['train_classes'])
@@ -230,14 +208,7 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
     metrics_calculator = MetricsCalculator(config, num_eval_classes, find_overlap_exclude_bg_ignore)
 
     # Initialize accumulators
-    accumulators = {
-        'overlap': torch.zeros(num_eval_classes),
-        'pred': torch.zeros(num_eval_classes),
-        'label': torch.zeros(num_eval_classes),
-        'union': torch.zeros(num_eval_classes)
-    }
-    # Move accumulators to device to match batch metrics
-    accumulators = {k: v.to(device) for k, v in accumulators.items()}
+    accumulators = metrics_calculator.create_accumulators(device)
 
     # Initialize storage for AP calculation
     eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
@@ -271,6 +242,14 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
     # Compute final metrics
     epoch_metrics = metrics_calculator.compute_epoch_metrics(accumulators, 0, len(val_loader))
 
+    # Calculate additional metrics
+    pixel_accuracy = epoch_metrics['pixel_accuracy']  # Already computed by accumulators
+    mean_accuracy = epoch_metrics['mean_accuracy']    # Already computed by accumulators
+    fw_iou = 0.0
+    if accumulators['class_pixels'].sum() > 0:
+        weights = accumulators['class_pixels'] / accumulators['class_pixels'].sum()
+        fw_iou = (weights * epoch_metrics['epoch_IoU']).sum().item()
+
     # Compute AP for each class
     ap_results = {}
     for cls_name in eval_classes:
@@ -285,16 +264,31 @@ def test_model_on_weather(config, model, device, weather_condition, checkpoint_p
             'iou': epoch_metrics['epoch_IoU'][cls_idx].item(),
             'precision': epoch_metrics['precision'][cls_idx].item(),
             'recall': epoch_metrics['recall'][cls_idx].item(),
-            'f1': epoch_metrics['f1'][cls_idx].item(),
+            'f1_score': epoch_metrics['f1'][cls_idx].item(),
             'ap': ap_results[cls_name]
         }
 
+    # Add overall metrics
+    results['overall'] = {
+        'mIoU_foreground': epoch_metrics['mean_iou'],
+        'mean_accuracy': mean_accuracy,
+        'fw_iou': fw_iou,
+        'pixel_accuracy': pixel_accuracy,
+        'confusion_matrix': accumulators['confusion_matrix'].cpu().tolist()
+    }
+
     print(f"{weather_condition} Results:")
-    print(f"Average IoU: {epoch_metrics['epoch_IoU'].mean().item():.4f}")
-    print(f"Average Precision: {epoch_metrics['precision'].mean().item():.4f}")
-    print(f"Average Recall: {epoch_metrics['recall'].mean().item():.4f}")
-    print(f"Average F1: {epoch_metrics['f1'].mean().item():.4f}")
-    print(f"Average AP: {np.mean(list(ap_results.values())):.4f}")
+    print(f"mIoU (foreground): {epoch_metrics['mean_iou']:.4f}")
+    print(f"Mean Accuracy: {mean_accuracy:.4f}")
+    print(f"Frequency-Weighted IoU: {fw_iou:.4f}")
+    print(f"Pixel Accuracy: {pixel_accuracy:.4f} (note: dominated by background)")
+    
+    print("\nPer-class Dice/F1:")
+    for i, cls_name in enumerate(eval_classes):
+        print(f"  {cls_name} F1: {epoch_metrics['f1'][i].item():.4f}")
+
+    # Now print the Mean AP after results is populated
+    print(f"Mean AP: {np.mean(list(ap_results.values())):.4f}")
 
     return results
 
@@ -338,6 +332,19 @@ def test_single_checkpoint(checkpoint_path, config, device, weather_conditions, 
         results = test_model_on_weather(config, model, device, weather, checkpoint_path)
         checkpoint_results[weather] = results
 
+    # Compute overall metrics as averages across conditions
+    overall_miou = np.mean([checkpoint_results[w]['overall']['mIoU_foreground'] for w in weather_conditions])
+    overall_mean_acc = np.mean([checkpoint_results[w]['overall']['mean_accuracy'] for w in weather_conditions])
+    overall_fw_iou = np.mean([checkpoint_results[w]['overall']['fw_iou'] for w in weather_conditions])
+    overall_pixel_acc = np.mean([checkpoint_results[w]['overall']['pixel_accuracy'] for w in weather_conditions])
+
+    checkpoint_results['overall'] = {
+        'mIoU_foreground': overall_miou,
+        'mean_accuracy': overall_mean_acc,
+        'fw_iou': overall_fw_iou,
+        'pixel_accuracy': overall_pixel_acc
+    }
+
     return checkpoint_results
 
 
@@ -347,7 +354,6 @@ def main():
     parser = argparse.ArgumentParser(description="Test MaskFormer on ZOD weather conditions")
     parser.add_argument('-c', '--config', type=str, required=True, help='Path to config JSON file')
     parser.add_argument('--checkpoint', type=str, default=None, help='Path to model checkpoint')
-    parser.add_argument('--output', type=str, default='test_results.json', help='Output file for results')
     args = parser.parse_args()
 
     # Load config
@@ -360,29 +366,26 @@ def main():
     num_classes = calculate_num_classes(config)
     num_eval_classes = calculate_num_eval_classes(config, num_classes)
 
-    # Get all checkpoint paths
+    # Get checkpoint path
     if args.checkpoint:
-        checkpoint_paths = [args.checkpoint]
+        checkpoint_path = args.checkpoint
     else:
-        checkpoint_paths = get_all_checkpoint_paths(config, ignore_model_path=True)
-
-    if not checkpoint_paths:
+        # Find the best checkpoint automatically (with fallback to latest)
+        checkpoint_path = get_checkpoint_path_with_fallback(config)
+    
+    if not checkpoint_path:
         print("No checkpoints found. Please train the model first.")
         return
 
-    print(f"Found {len(checkpoint_paths)} checkpoints to test")
+    print(f"Testing checkpoint: {checkpoint_path}")
 
     # Weather conditions to test
     weather_conditions = ['day_fair', 'day_rain', 'night_fair', 'night_rain', 'snow']
-    eval_classes = [cls['name'] for cls in config['Dataset']['train_classes'] if cls['index'] > 0]
 
-    # Test all checkpoints one by one
-    all_checkpoint_results = []
-    for checkpoint_path in checkpoint_paths:
-        checkpoint_data = test_checkpoint_and_save(
-            checkpoint_path, test_single_checkpoint, config, device, weather_conditions, num_classes, num_eval_classes
-        )
-        all_checkpoint_results.append(checkpoint_data)
+    # Test the checkpoint
+    test_checkpoint_and_save(
+        checkpoint_path, test_single_checkpoint, config, device, weather_conditions, num_classes, num_eval_classes
+    )
 
     # Calculate total execution time
     end_time = time.time()
@@ -394,7 +397,7 @@ def main():
     
     print(f"\n{'='*50}")
     print(f"Total test execution time: {int(hours):02d}:{int(minutes):02d}:{seconds:05.2f} ({total_execution_time:.2f} seconds)")
-    print(f"Completed testing all {len(checkpoint_paths)} checkpoints")
+    print(f"Completed testing checkpoint")
 
 
 if __name__ == "__main__":

@@ -181,7 +181,7 @@ def main():
     print(f"Device: {device}")
 
     # Get model path
-    model_path = get_model_path(config)
+    model_path = get_model_path(config, best=True)
     if not model_path:
         print("No model checkpoint found!")
         sys.exit(1)

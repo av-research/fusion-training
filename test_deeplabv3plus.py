@@ -18,7 +18,7 @@ from tqdm import tqdm
 from models.deeplabv3plus import build_deeplabv3plus
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore
-from utils.helpers import get_all_checkpoint_paths, sanitize_for_json
+from utils.helpers import get_all_checkpoint_paths, get_checkpoint_path_with_fallback, sanitize_for_json
 from utils.test_aggregator import test_checkpoint_and_save
 
 
@@ -176,6 +176,12 @@ def test_model(model, dataloader, metrics_calc, device, config, num_classes, mod
     all_predictions = {cls: [] for cls in eval_classes}
     all_targets = {cls: [] for cls in eval_classes}
     
+    # Initialize accumulators for additional metrics
+    pixel_correct = 0.0
+    pixel_total = 0.0
+    class_pixels = torch.zeros(len(eval_classes))  # For FWIoU
+    confusion_matrix = torch.zeros(num_classes, num_classes, dtype=torch.long, device=device)  # Include background
+    
     with torch.no_grad():
         for i, batch in enumerate(tqdm(dataloader, desc="Testing")):
             rgb = batch['rgb'].to(device)
@@ -194,6 +200,9 @@ def test_model(model, dataloader, metrics_calc, device, config, num_classes, mod
                     lidar = batch['lidar'].to(device)
                     pred = model(lidar)
             
+            # Get predictions
+            preds = torch.argmax(pred, dim=1)
+            
             # Update accumulators
             batch_overlap, batch_pred, batch_label, batch_union = metrics_calc.update_accumulators(
                 accumulators, pred, anno, num_classes
@@ -202,10 +211,32 @@ def test_model(model, dataloader, metrics_calc, device, config, num_classes, mod
             # Store predictions and targets for proper AP calculation
             _store_predictions_for_ap(pred, anno, all_predictions, all_targets, eval_classes, config)
             
+            # Update pixel accuracy
+            correct_pixels = (preds == anno).sum().item()
+            total_pixels = anno.numel()
+            pixel_correct += correct_pixels
+            pixel_total += total_pixels
+            
+            # Update class pixel counts for FWIoU
+            for i in range(len(eval_classes)):
+                class_pixels[i] += (anno == (i + 1)).sum().item()  # eval classes start from 1
+            
+            # Update confusion matrix (vectorized)
+            indices = num_classes * anno.flatten() + preds.flatten()
+            confusion_matrix += torch.bincount(indices, minlength=num_classes**2).reshape(num_classes, num_classes)
+            
             num_batches += 1
     
     # Compute metrics
     metrics = metrics_calc.compute_epoch_metrics(accumulators, total_loss, num_batches)
+    
+    # Calculate additional metrics
+    fw_iou = 0.0
+    if accumulators['class_pixels'].sum() > 0:
+        class_pixels_cpu = accumulators['class_pixels'].cpu()
+        weights = class_pixels_cpu / class_pixels_cpu.sum()
+        epoch_iou_cpu = metrics['epoch_IoU'].cpu()
+        fw_iou = (weights * epoch_iou_cpu).sum().item()
     
     # Add proper AP calculation
     num_eval_classes = len(eval_classes)
@@ -213,6 +244,10 @@ def test_model(model, dataloader, metrics_calc, device, config, num_classes, mod
     for i, cls_name in enumerate(eval_classes):
         ap = _compute_ap_for_class(cls_name, all_predictions, all_targets)
         metrics['ap'][i] = ap
+    
+    # Add additional metrics
+    metrics['fw_iou'] = fw_iou
+    metrics['confusion_matrix'] = accumulators['confusion_matrix']
     
     return metrics
 
@@ -222,11 +257,14 @@ def print_metrics(metrics, dataset_name, class_names):
     print(f"\n{'='*60}")
     print(f"{dataset_name} Results")
     print(f"{'='*60}")
-    print(f"mIoU: {metrics['mean_iou']:.4f}")
+    print(f"mIoU (foreground): {metrics['mean_iou']:.4f}")
     print(f"Mean Precision: {torch.mean(metrics['precision']).item():.4f}")
     print(f"Mean Recall: {torch.mean(metrics['recall']).item():.4f}")
     print(f"Mean F1: {torch.mean(metrics['f1']).item():.4f}")
     print(f"Mean AP: {torch.mean(metrics['ap']).item():.4f}")
+    print(f"Pixel Accuracy: {metrics['pixel_accuracy']:.4f}")
+    print(f"Mean Accuracy: {metrics['mean_accuracy']:.4f}")
+    print(f"Frequency-Weighted IoU: {metrics['fw_iou']:.4f}")
     
     print("\nPer-class Metrics:")
     for i, class_name in enumerate(class_names):
@@ -249,11 +287,6 @@ def extract_epoch_info(model_path):
     if epoch_match:
         return int(epoch_match.group(1)), None
     
-    # Fallback for best_model format
-    best_match = re.search(r'best_model_([a-f0-9\-]+)\.pth', model_path)
-    if best_match:
-        return 0, best_match.group(1)
-    
     return 0, None
 
 
@@ -262,24 +295,31 @@ def convert_metrics_to_serializable(metrics, config, num_eval_classes):
     train_classes = config['Dataset']['train_classes']
     class_names = [cls['name'] for cls in train_classes if cls['index'] > 0]
     
-    serializable = {
-        'mean_iou': float(metrics['mean_iou']),
-        'mean_precision': float(torch.mean(metrics['precision']).item()),
-        'mean_recall': float(torch.mean(metrics['recall']).item()),
-        'mean_f1': float(torch.mean(metrics['f1']).item()),
-        'mean_ap': float(torch.mean(metrics['ap']).item())
-    }
+    serializable = {}
     
-    # Add per-class metrics
+    # Add per-class metrics at top level
     for i in range(num_eval_classes):
         class_name = class_names[i] if i < len(class_names) else f'class_{i+1}'
         serializable[class_name] = {
             'iou': float(metrics['epoch_IoU'][i].item()),
             'precision': float(metrics['precision'][i].item()),
             'recall': float(metrics['recall'][i].item()),
-            'f1': float(metrics['f1'][i].item()),
+            'f1_score': float(metrics['f1'][i].item()),
             'ap': float(metrics['ap'][i].item())
         }
+    
+    # Add overall metrics under 'overall' key
+    serializable['overall'] = {
+        'mIoU_foreground': float(metrics['mean_iou']),
+        'mean_precision': float(torch.mean(metrics['precision']).item()),
+        'mean_recall': float(torch.mean(metrics['recall']).item()),
+        'mean_f1': float(torch.mean(metrics['f1']).item()),
+        'mean_ap': float(torch.mean(metrics['ap']).item()),
+        'pixel_accuracy': float(metrics['pixel_accuracy']),
+        'mean_accuracy': float(metrics['mean_accuracy']),
+        'fw_iou': float(metrics['fw_iou']),
+        'confusion_matrix': metrics['confusion_matrix'].tolist()
+    }
     
     return serializable
 
@@ -404,6 +444,29 @@ def test_single_checkpoint(checkpoint_path, config, device, weather_conditions, 
         print_metrics(test_metrics, condition_name, class_names)
         checkpoint_results[condition_key] = convert_metrics_to_serializable(test_metrics, config, num_eval_classes)
 
+    # Compute overall averages across all weather conditions
+    if checkpoint_results:
+        # Compute overall metrics as averages across conditions (matching test_swin.py structure)
+        overall_miou = np.mean([checkpoint_results[w]['overall']['mIoU_foreground'] for w in checkpoint_results.keys()])
+        overall_mean_precision = np.mean([checkpoint_results[w]['overall']['mean_precision'] for w in checkpoint_results.keys()])
+        overall_mean_recall = np.mean([checkpoint_results[w]['overall']['mean_recall'] for w in checkpoint_results.keys()])
+        overall_mean_f1 = np.mean([checkpoint_results[w]['overall']['mean_f1'] for w in checkpoint_results.keys()])
+        overall_mean_ap = np.mean([checkpoint_results[w]['overall']['mean_ap'] for w in checkpoint_results.keys()])
+        overall_pixel_acc = np.mean([checkpoint_results[w]['overall']['pixel_accuracy'] for w in checkpoint_results.keys()])
+        overall_mean_acc = np.mean([checkpoint_results[w]['overall']['mean_accuracy'] for w in checkpoint_results.keys()])
+        overall_fw_iou = np.mean([checkpoint_results[w]['overall']['fw_iou'] for w in checkpoint_results.keys()])
+
+        checkpoint_results['overall'] = {
+            'mIoU_foreground': overall_miou,
+            'mean_precision': overall_mean_precision,
+            'mean_recall': overall_mean_recall,
+            'mean_f1': overall_mean_f1,
+            'mean_ap': overall_mean_ap,
+            'pixel_accuracy': overall_pixel_acc,
+            'mean_accuracy': overall_mean_acc,
+            'fw_iou': overall_fw_iou
+        }
+
     return checkpoint_results
 
 
@@ -436,14 +499,20 @@ def main():
     fusion_type = config['DeepLabV3Plus'].get('fusion_type', 'learned')
     is_fusion = modality == 'fusion'
     
-    # Get all checkpoint paths
+    # Get checkpoint paths
     if args.checkpoint:
         checkpoint_paths = [args.checkpoint]
     else:
-        checkpoint_paths = get_all_checkpoint_paths(config, ignore_model_path=True)
-        if not checkpoint_paths:
-            print("Error: No checkpoints found. Please train the model first.")
-            return
+        # Find the best checkpoint automatically (with fallback to latest)
+        checkpoint_path = get_checkpoint_path_with_fallback(config)
+        if checkpoint_path:
+            checkpoint_paths = [checkpoint_path]
+        else:
+            checkpoint_paths = []
+    
+    if not checkpoint_paths:
+        print("No checkpoints found. Please train the model first.")
+        return
     
     print(f"Found {len(checkpoint_paths)} checkpoints to test")
     
