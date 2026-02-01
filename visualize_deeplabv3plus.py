@@ -94,15 +94,12 @@ def process_images(model, data_loader, visualizer, image_paths, dataroot,
 
         # Load data
         print(f'Processing image {idx}/{len(image_paths)}: {rgb_name}')
+        rgb = data_loader.load_rgb(cam_path).to(device, non_blocking=True).unsqueeze(0)
         
+        # Only load LiDAR data if not in RGB-only mode
         if modality == 'rgb':
-            rgb = data_loader.load_rgb(cam_path).to(device, non_blocking=True).unsqueeze(0)
             lidar = None
-        elif modality == 'lidar':
-            rgb = None
-            lidar = data_loader.load_lidar(lidar_path).to(device, non_blocking=True).unsqueeze(0)
-        else:  # fusion
-            rgb = data_loader.load_rgb(cam_path).to(device, non_blocking=True).unsqueeze(0)
+        else:
             lidar = data_loader.load_lidar(lidar_path).to(device, non_blocking=True).unsqueeze(0)
 
         # Run inference
