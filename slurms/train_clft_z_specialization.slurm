@@ -13,11 +13,6 @@
 ## run job
 source venv/bin/activate 
 
-python train_clft.py --config config/zod/clft/specialization/baseline.json
-python test_clft.py --config config/zod/clft/specialization/baseline.json
-python visualize_clft.py --config config/zod/clft/specialization/baseline.json --upload
-python benchmark.py --config config/zod/clft/specialization/baseline.json
-
 python train_clft.py --config config/zod/clft/specialization/human_sign.json
 python test_clft.py --config config/zod/clft/specialization/human_sign.json
 python visualize_clft.py --config config/zod/clft/specialization/human_sign.json --upload
