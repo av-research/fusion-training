@@ -10,8 +10,8 @@ To address these challenges, we present CLFTv2, a practical multi-modal framewor
 By leveraging shifted window attention, our approach achieves linear complexity scaling with input size, enabling scalable processing of high-resolution sensor data.
 We employ hierarchical feature pyramids and progressive fusion strategies to integrate sparse geometric features with dense semantic maps across multiple scales, specifically targeting the detection of Vulnerable Road Users (VRUs).
 Furthermore, we address the label scarcity in the Zenseact Open Dataset (ZOD) by developing an automated annotation pipeline using the Segment Anything Model (SAM) to generate dense segmentation masks from bounding boxes.
-Extensive experiments show that CLFTv2 achieves strong performance with a foreground mIoU of 93.5\% on the Waymo Open Dataset and 83.6\% on ZOD, outperforming previous baselines.
-Notably, our fusion approach yields substantial safety improvements, achieving up to 91.2\% IoU for pedestrians on Waymo and 75.3\% on ZOD, respectively.
+Extensive experiments show that CLFTv2 achieves strong performance with a foreground mIoU of 57.9\% and frequency-weighted IoU of 64.8\% on the Waymo Open Dataset validation set and 50.2\% mIoU (61.7\% FW IoU) on ZOD set, outperforming previous baselines.
+Notably, our fusion approach yields substantial safety improvements, achieving up to 59.7\% IoU for pedestrians on Waymo and 41.4\% on ZOD, respectively.
 Our code and data processing pipeline are publicly released to support further research.
 
 ## Setup Virtual Environment
