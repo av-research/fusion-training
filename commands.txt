@@ -93,3 +93,6 @@ rsync -avz totahv@base.hpc.taltech.ee:/gpfs/mariana/smbhome/totahv/clft-zod-trai
 rsync -avz totahv@base.hpc.taltech.ee:/gpfs/mariana/smbhome/totahv/clft-zod-training/logs/zod/clft/config_8/checkpoints/epoch_49_71f5b556-d4e0-42bd-bc39-3f7fb65a40b0.pth /media/tom/ml/clftv1_fusion_hybrid.pth
 
 rsync -avz totahv@base.hpc.taltech.ee:/gpfs/mariana/smbhome/totahv/clft-zod-training/logs/waymo/swin/config_8/checkpoints/epoch_49_2ea14d3d-490b-4d65-91a9-631cd6b9c827.pth /media/tom/ml/clftv2_base_waymo.pth
+
+# Download folder from server
+rsync -avz totahv@base.hpc.taltech.ee:/gpfs/mariana/smbhome/totahv/clft-zod-training/logs/zod/clft/specialization /media/tom/ml/
