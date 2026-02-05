@@ -1,7 +1,7 @@
 {
     "Summary": "ZOD DeepLabV3+ Fusion - Vehicle + Sign Specialization",
     "tags": ["ZOD", "DeepLabV3+", "Fusion", "Vehicle-Sign", "Specialization"],
-    "CLI": {"backbone": "deeplabv3plus", "mode": "fusion", "path": "./zod_dataset/"},
+    "CLI": {"backbone": "deeplabv3plus", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
         "epochs": 100,

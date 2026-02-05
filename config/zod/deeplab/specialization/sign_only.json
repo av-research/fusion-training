@@ -1,7 +1,7 @@
 {
     "Summary": "ZOD DeepLabV3+ Fusion - Sign Only Specialization",
     "tags": ["ZOD", "DeepLabV3+", "Fusion", "Sign-Only", "Specialization"],
-    "CLI": {"backbone": "deeplabv3plus", "mode": "fusion", "path": "./zod_dataset/"},
+    "CLI": {"backbone": "deeplabv3plus", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
         "epochs": 100,
