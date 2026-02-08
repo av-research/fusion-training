@@ -153,7 +153,7 @@ def setup_criterion(config):
 def setup_overlap_function(config):
     """Setup dataset-specific overlap calculation function."""
     dataset_name = config['Dataset']['name']
-    if dataset_name in ['zod', 'waymo']:
+    if dataset_name in ['zod', 'waymo', 'iseauto']:
         print(f"Using unified IoU calculation (excludes background only)")
         return find_overlap_exclude_bg_ignore
 

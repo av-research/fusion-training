@@ -7,11 +7,6 @@ Loads a merged checkpoint that combines vehicle, sign, and human specialized mod
 import os
 import json
 import torch
-import numpy as np
-from pathlib import Path
-
-from clft.clft import CLFT
-
 
 class ZODMergedEnsemblePredictor:
     """Predictor for pseudo-merged ensemble (single file containing all 3 models)."""
