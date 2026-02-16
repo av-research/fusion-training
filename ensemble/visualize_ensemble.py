@@ -5,14 +5,13 @@ Visualization script for ZOD Merged Ensemble predictions.
 Creates overlays of merged model predictions on visualization images.
 """
 import os
-import sys
 import json
 import argparse
 import numpy as np
 import torch
 import cv2
 
-from zod_ensemble_predictor import ZODMergedEnsemblePredictor
+from ensemble.zod_ensemble_predictor import ZODMergedEnsemblePredictor
 from core.data_loader import DataLoader as InferenceDataLoader
 from core.visualizer import Visualizer
 from utils.helpers import get_annotation_path

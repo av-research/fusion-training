@@ -12,10 +12,14 @@ class ZODMergedEnsemblePredictor:
     """Predictor for pseudo-merged ensemble (single file containing all 3 models)."""
 
     def __init__(self, device='cuda:0'):
+        """Initialize the ensemble predictor.
+
+        Args:
+            device: Device to run the models on ('cuda:0', 'cpu', etc.)
+        """
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
-        self.models = []
-        self.class_names = []
-        self.class_indices = []
+        self.models = []  # List of specialized models
+        # Note: class_names and class_indices are kept for potential future use but not currently used
 
         # Load pseudo-merged checkpoint
         self._load_pseudo_merged_checkpoint()
@@ -47,7 +51,7 @@ class ZODMergedEnsemblePredictor:
 
         print(f"Loading ensemble from pseudo-merged checkpoint")
 
-        for class_name, class_idx, model_ckpt in model_configs:
+        for class_name, _, model_ckpt in model_configs:  # class_idx not used
             print(f"Loading {class_name} model...")
 
             # Use the same config as ensemble predictor
@@ -67,10 +71,9 @@ class ZODMergedEnsemblePredictor:
             print(f"  Loaded checkpoint from epoch {model_ckpt.get('epoch', 0)}")
 
             self.models.append(model)
-            self.class_names.append(class_name)
-            self.class_indices.append(class_idx)
+            # Note: class_names and class_indices removed as they were unused
 
-        print(f"Pseudo-merged ensemble loaded with {len(self.models)} models: {self.class_names}")
+        print(f"Pseudo-merged ensemble loaded with {len(self.models)} models: {['vehicle', 'sign', 'human']}")
         print("Class mapping: background=0, vehicle=1, sign=2, human=3")
 
     def _load_single_model_checkpoint(self, checkpoint):
@@ -94,12 +97,12 @@ class ZODMergedEnsemblePredictor:
 
     def predict(self, rgb_batch, lidar_batch, modal='cross_fusion'):
         """
-        Make ensemble prediction.
+        Make ensemble prediction by combining outputs from all specialized models.
 
         Args:
             rgb_batch: RGB input tensor [B, 3, H, W]
             lidar_batch: LiDAR input tensor [B, 3, H, W]
-            modal: Fusion mode ('rgb', 'lidar', 'cross_fusion')
+            modal: Fusion mode ('rgb', 'lidar', 'cross_fusion') - currently not used in ensemble
 
         Returns:
             Combined segmentation output [B, 4, H, W] (background + 3 classes)
@@ -119,7 +122,7 @@ class ZODMergedEnsemblePredictor:
 
         with torch.no_grad():
             for i, model in enumerate(self.models):
-                # Forward pass
+                # Forward pass through each specialized model
                 _, seg_output = model(rgb_batch, lidar_batch, modal=modal)
                 # seg_output shape: [B, 2, H, W] (background + class_i)
 

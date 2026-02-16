@@ -11,7 +11,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from zod_ensemble_predictor import ZODMergedEnsemblePredictor
+from ensemble.zod_ensemble_predictor import ZODMergedEnsemblePredictor
 from tools.dataset_png import DatasetPNG
 from core.metrics_calculator import MetricsCalculator
 from utils.metrics import find_overlap_exclude_bg_ignore

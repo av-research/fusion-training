@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Simple script to merge 3 specialized CLFT checkpoints into a single checkpoint.
-Averages the encoder weights from vehicle-only, sign-only, and human-only models.
+Creates a pseudo-merged ensemble containing all three specialized models in one file.
 """
 import os
 import torch

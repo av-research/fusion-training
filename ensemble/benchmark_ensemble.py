@@ -18,9 +18,6 @@ import GPUtil
 from collections import defaultdict
 import pandas as pd
 from tqdm import tqdm
-import glob
-import re
-import sys
 
 # Try to import FLOPS calculation libraries
 try:
