@@ -1,15 +1,15 @@
 {
-    "Summary": "ZOD OneFormer-Tiny RGB",
+    "Summary": "ZOD OneFormer-Small RGB",
     "tags": [
         "ZOD",
         "OneFormer",
-        "Tiny",
+        "Small",
         "RGB"
     ],
     "CLI": {
         "backbone": "oneformer",
         "mode": "rgb",
-        "path": "zod_dataset/"
+        "path": "./zod_dataset/"
     },
     "General": {
         "device": "cuda:0",
@@ -26,53 +26,26 @@
     "Log": {
         "logdir": "logs/zod/oneformer/config_1"
     },
+    "OneFormer": {
+        "model_timm": "swinv2_small_window16_256",
+        "pixel_decoder_channels": 256,
+        "transformer_d_model": 256,
+        "num_queries": 100,
+        "clft_lr": 0.0001,
+        "lr_momentum": 0.99,
+        "pretrained": true,
+        "detectron_cfg": null
+    },
     "Dataset": {
         "name": "zod",
-        "dataset_root": "zod_dataset/",
+        "dataset_root": "./zod_dataset/",
         "annotation_path": "annotation_camera_only",
-        "train_split": "zod_dataset/train.txt",
-        "val_split": "zod_dataset/validation.txt",
+        "train_split": "./zod_dataset/train.txt",
+        "val_split": "./zod_dataset/validation.txt",
         "splits": {
             "split_train": 0.6,
             "split_val": 0.2,
             "split_test": 0.2
-        },
-        "transforms": {
-            "resize": 256,
-            "random_rotate_range": 20,
-            "p_flip": 0.5,
-            "p_crop": 0.3,
-            "p_rot": 0.4,
-            "image_mean": [
-                0.325291,
-                0.325736,
-                0.331795
-            ],
-            "image_std": [
-                0.168061,
-                0.179542,
-                0.204609
-            ],
-            "lidar_mean": [
-                0.049261,
-                0.049575,
-                0.092697
-            ],
-            "lidar_std": [
-                0.07696,
-                0.073541,
-                0.098311
-            ],
-            "lidar_mean_waymo": [
-                -0.17263354,
-                0.85321806,
-                24.5527253
-            ],
-            "lidar_std_waymo": [
-                7.34546552,
-                1.17227659,
-                15.83745082
-            ]
         },
         "dataset_classes": [
             {
@@ -155,7 +128,34 @@
                     255
                 ]
             }
-        ]
+        ],
+        "transforms": {
+            "resize": 256,
+            "random_rotate_range": 20,
+            "p_flip": 0.5,
+            "p_crop": 0.3,
+            "p_rot": 0.4,
+            "image_mean": [
+                0.325291,
+                0.325736,
+                0.331795
+            ],
+            "image_std": [
+                0.168061,
+                0.179542,
+                0.204609
+            ],
+            "lidar_mean": [
+                0.049261,
+                0.049575,
+                0.092697
+            ],
+            "lidar_std": [
+                0.07696,
+                0.073541,
+                0.098311
+            ]
+        }
     },
     "Loss": {
         "name": "maskformer_loss",
@@ -210,15 +210,5 @@
         "power": 0.9,
         "warmup_iters": 10,
         "warmup_ratio": 1e-06
-    },
-    "OneFormer": {
-        "model_timm": "swinv2_tiny_window8_256",
-        "pixel_decoder_channels": 256,
-        "transformer_d_model": 256,
-        "num_queries": 100,
-        "clft_lr": 0.0001,
-        "lr_momentum": 0.99,
-        "pretrained": true,
-        "detectron_cfg": null
     }
 }
