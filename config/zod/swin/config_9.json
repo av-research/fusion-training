@@ -41,7 +41,7 @@
         ],
         "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
         "fusion_strategy": "residual_average",
-        "clft_lr": 8e-05,
+        "clft_lr": 3e-05,
         "patch_size": 4,
         "reassembles": [
             4,
@@ -52,8 +52,9 @@
         "read": "ignore",
         "resample_dim": 384,
         "type": "segmentation",
-        "lr_momentum": 0.99,
-        "pretrained": true
+        "pretrained": true,
+        "warmup_epochs": 10,
+        "weight_decay": 0.05
     },
     "Dataset": {
         "name": "zod",

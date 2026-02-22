@@ -52,8 +52,9 @@
         "read": "ignore",
         "resample_dim": 256,
         "type": "segmentation",
-        "lr_momentum": 0.99,
-        "pretrained": true
+        "pretrained": true,
+        "warmup_epochs": 10,
+        "weight_decay": 0.05
     },
     "Dataset": {
         "name": "zod",

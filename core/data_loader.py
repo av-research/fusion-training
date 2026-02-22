@@ -25,18 +25,14 @@ class DataLoader:
     
     def _setup_lidar_normalization(self):
         """Setup dataset-specific LiDAR normalization."""
+        t = self.config['Dataset']['transforms']
         if self.dataset_name == 'iseauto':
-            self.lidar_mean = self.config['Dataset']['transforms']['lidar_mean']
-            self.lidar_std = self.config['Dataset']['transforms']['lidar_std']
+            self.lidar_mean = t['lidar_mean']
+            self.lidar_std  = t['lidar_std']
         else:
-            self.lidar_mean = self.config['Dataset']['transforms'].get(
-                'lidar_mean', 
-                self.config['Dataset']['transforms']['lidar_mean_waymo']
-            )
-            self.lidar_std = self.config['Dataset']['transforms'].get(
-                'lidar_std', 
-                self.config['Dataset']['transforms']['lidar_std_waymo']
-            )
+            # Use .get() for both keys so neither is accessed when absent
+            self.lidar_mean = t.get('lidar_mean') or t.get('lidar_mean_waymo')
+            self.lidar_std  = t.get('lidar_std')  or t.get('lidar_std_waymo')
     
     def load_rgb(self, image_path):
         """Load and preprocess RGB image."""

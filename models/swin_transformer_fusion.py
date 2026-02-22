@@ -297,12 +297,16 @@ class HeadDepth(nn.Module):
         return self.conv(x)
 
 class HeadSeg(nn.Module):
+    """Two-conv segmentation head: Conv3x3-BN-ReLU → Conv1x1."""
     def __init__(self, resample_dim, nclasses):
         super(HeadSeg, self).__init__()
-        self.conv = nn.Conv2d(resample_dim, nclasses, kernel_size=3, stride=1, padding=1, bias=True)
+        self.conv1 = nn.Conv2d(resample_dim, resample_dim, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn    = nn.BatchNorm2d(resample_dim)
+        self.relu  = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(resample_dim, nclasses, kernel_size=1, bias=True)
 
     def forward(self, x):
-        return self.conv(x)
+        return self.conv2(self.relu(self.bn(self.conv1(x))))
 
 
 class SwinTransformerFusion(nn.Module):
@@ -374,8 +378,12 @@ class SwinTransformerFusion(nn.Module):
         else:
             raise ValueError(f"Invalid modal: {modal}")
         
+        n = len(self.fusions)
+        # Coarse-to-fine: start at the smallest (deepest) scale and progressively
+        # upsample into finer scales — proper FPN/DPT-style feature pyramid.
+        # reassemble_s = [4, 8, 16, 32]  →  index  3 (scale 32) first, 0 (scale 4) last.
         previous_stage = None
-        for i in range(len(self.fusions)):
+        for i in range(n - 1, -1, -1):
             if modal == 'rgb':
                 activation_result_rgb = features_rgb[i]
                 activation_result_lidar = torch.zeros_like(activation_result_rgb)
@@ -383,37 +391,36 @@ class SwinTransformerFusion(nn.Module):
                 activation_result_lidar = features_lidar[i]
                 activation_result_rgb = torch.zeros_like(activation_result_lidar)
             elif modal == 'cross_fusion':
-                # For all fusion strategies, use separate features
                 activation_result_rgb = features_rgb[i]
                 activation_result_lidar = features_lidar[i]
-            
+
             # Ensure [b, c, h, w]
             if activation_result_rgb.shape[1] != self.emb_dims[i]:
                 activation_result_rgb = activation_result_rgb.permute(0, 3, 1, 2)
             if activation_result_lidar.shape[1] != self.emb_dims[i]:
                 activation_result_lidar = activation_result_lidar.permute(0, 3, 1, 2)
-            
+
             projection_result_RGB = self.projections_RGB[i](activation_result_rgb)
             projection_result_XYZ = self.projections_XYZ[i](activation_result_lidar)
-            
-            # Interpolate to fixed size for ablation (64x64)
-            projection_result_RGB = nn.functional.interpolate(projection_result_RGB, size=(64, 64), mode='bilinear', align_corners=False)
-            projection_result_XYZ = nn.functional.interpolate(projection_result_XYZ, size=(64, 64), mode='bilinear', align_corners=False)
-            
+
+            # No fixed bottleneck — features keep their natural spatial resolution.
+            # The Fusion module interpolates previous_stage to match the current scale.
             fusion_result = self.fusions[i](projection_result_RGB, projection_result_XYZ, previous_stage, modal)
             previous_stage = fusion_result
+
         out_depth = None
         out_segmentation = None
-        if self.head_depth != None:
+        if self.head_depth is not None:
             out_depth = self.head_depth(previous_stage)
-        if self.head_segmentation != None:
+        if self.head_segmentation is not None:
             out_segmentation = self.head_segmentation(previous_stage)
-        
-        # Interpolate to input resolution (resample_dim x resample_dim)
+
+        # Upsample to actual input resolution
+        H, W = rgb.shape[-2], rgb.shape[-1]
         if out_depth is not None:
-            out_depth = nn.functional.interpolate(out_depth, size=(self.resample_dim, self.resample_dim), mode='bilinear', align_corners=False)
+            out_depth = nn.functional.interpolate(out_depth, size=(H, W), mode='bilinear', align_corners=False)
         if out_segmentation is not None:
-            out_segmentation = nn.functional.interpolate(out_segmentation, size=(self.resample_dim, self.resample_dim), mode='bilinear', align_corners=False)
-        
+            out_segmentation = nn.functional.interpolate(out_segmentation, size=(H, W), mode='bilinear', align_corners=False)
+
         return out_depth, out_segmentation
 

@@ -481,9 +481,11 @@ class Mask2FormerDecoder(nn.Module):
 
             # Build attention mask from previous prediction (binarise at threshold 0)
             prev_masks = all_masks[-1]                        # [B, Q, H_pf, W_pf]
-            # Down-sample to current memory scale
+            # Down-sample to current memory scale.
+            # align_corners=True keeps spatial correspondence consistent with the
+            # final segmap upsample, avoiding systematic attended-region shift.
             attn_map = F.interpolate(
-                prev_masks.float(), size=(h_s, w_s), mode='bilinear', align_corners=False
+                prev_masks.float(), size=(h_s, w_s), mode='bilinear', align_corners=True
             )  # [B, Q, h_s, w_s]
             # Boolean mask: True (attend) where sigmoid(prev) > 0.5
             # Per Mask2Former §3.2: mask is 0 for attended pixels, -inf otherwise
@@ -847,7 +849,9 @@ class Mask2FormerFusion(nn.Module):
         mask_probs = torch.sigmoid(all_masks[-1])
         segmap     = torch.einsum('bqc,bqhw->bchw', cls_probs, mask_probs)
 
-        # 6. Upsample to input resolution
-        segmap = F.interpolate(segmap, size=(H, W), mode='bilinear', align_corners=False)
+        # 6. Upsample to input resolution.
+        # align_corners=True pins feature corners to output corners, preventing the
+        # ~1.5-pixel left-boundary offset that align_corners=False causes at 4× scale.
+        segmap = F.interpolate(segmap, size=(H, W), mode='bilinear', align_corners=True)
 
         return None, segmap, all_class_logits, all_masks

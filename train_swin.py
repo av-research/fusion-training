@@ -22,6 +22,64 @@ from integrations.vision_service import create_training, create_config, get_trai
 from utils.helpers import get_training_uuid_from_logs, get_model_path
 
 
+class SwinTrainingEngine(TrainingEngine):
+    """TrainingEngine subclass for SwinFusion.
+
+    Adds per-batch gradient clipping and an optional LR scheduler that steps
+    once per epoch (warmup + cosine annealing).  All other behaviour — AMP,
+    logging, checkpointing — is inherited from the base class.
+    """
+
+    def __init__(self, *args, scheduler=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scheduler = scheduler
+
+    def train_epoch(self, dataloader, modality, num_classes):
+        """One training epoch with gradient clipping."""
+        from torch.amp import autocast
+        from utils.helpers import relabel_annotation
+        from tqdm import tqdm
+
+        self.model.train()
+        accumulators = self.metrics_calc.create_accumulators(self.device)
+        train_loss = 0.0
+
+        progress_bar = tqdm(dataloader)
+        for batch in progress_bar:
+            rgb   = batch['rgb'].to(self.device,  non_blocking=True)
+            lidar = batch['lidar'].to(self.device, non_blocking=True)
+            anno  = batch['anno'].to(self.device,  non_blocking=True)
+
+            self.optimizer.zero_grad()
+            rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
+
+            with autocast('cuda'):
+                model_outputs = self.model(rgb_input, lidar_input, modality)
+                output_seg = (
+                    model_outputs[1] if model_outputs[0] is None else model_outputs[0]
+                ).squeeze(1)
+                anno = relabel_annotation(anno.cpu(), self.config).squeeze(0).to(self.device)
+                loss = self.criterion(output_seg, anno)
+
+            self.metrics_calc.update_accumulators(accumulators, output_seg, anno, num_classes)
+            train_loss += loss.item()
+
+            self.scaler.scale(loss).backward()
+            self.scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+
+            progress_bar.set_description(f'Train loss: {loss:.4f}')
+
+        metrics = self.metrics_calc.compute_epoch_metrics(
+            accumulators, train_loss, len(dataloader)
+        )
+        if self.scheduler is not None:
+            self.scheduler.step()
+        return metrics
+
+
 def calculate_num_classes(config):
     """
     Calculate number of training classes.
@@ -192,15 +250,35 @@ def main():
     model_builder = AdvancedModelBuilder(config, device)
     model = model_builder.build_model()
     model.to(device)
-    
-    # Setup optimizer
-    optimizer = torch.optim.Adam(model.parameters(), 
-                                lr=config['SwinFusion']['clft_lr'])
+
+    # Setup optimizer — AdamW with weight decay for better regularisation
+    weight_decay = config['SwinFusion'].get('weight_decay', 0.05)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=config['SwinFusion']['clft_lr'],
+        weight_decay=weight_decay,
+    )
     
     # Setup criterion
     criterion = setup_criterion(config)
     criterion.to(device)
-    
+
+    # LR scheduler: linear warmup then cosine annealing.
+    # Disable the legacy momentum-based decay by removing lr_momentum so that
+    # adjust_learning_rate() in train_full() becomes a no-op.
+    config['SwinFusion'].pop('lr_momentum', None)
+    warmup_epochs  = config['SwinFusion'].get('warmup_epochs', 10)
+    total_epochs   = config['General']['epochs']
+    warmup_sched = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=0.01, end_factor=1.0, total_iters=warmup_epochs
+    )
+    main_sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=max(1, total_epochs - warmup_epochs)
+    )
+    scheduler = torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup_sched, main_sched], milestones=[warmup_epochs]
+    )
+
     # Setup overlap function
     find_overlap_func = setup_overlap_function(config)
     
@@ -250,7 +328,7 @@ def main():
     )
     
     # Setup training engine
-    training_engine = TrainingEngine(
+    training_engine = SwinTrainingEngine(
         model=model,
         optimizer=optimizer,
         criterion=criterion,
@@ -259,7 +337,8 @@ def main():
         training_uuid=training_uuid,
         log_dir=config['Log']['logdir'],
         device=device,
-        vision_training_id=vision_training_id
+        vision_training_id=vision_training_id,
+        scheduler=scheduler,
     )
     
     # Train
