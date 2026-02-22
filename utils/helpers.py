@@ -263,19 +263,26 @@ def get_model_config_key(config):
         return 'MaskFormer'   
     elif backbone == 'oneformer':
         return 'OneFormer'
+    elif backbone == 'mask2former':
+        return 'Mask2Former'
     else:
         return 'CLFT'  # default
 
 def adjust_learning_rate(config, optimizer, epoch):
-    """Decay the learning rate based on schedule"""
-    epoch_max = config['General']['epochs']
+    """Decay the learning rate based on schedule.
+
+    If 'lr_momentum' is absent from the model config block (e.g. when an
+    external scheduler already manages the LR), the function is a no-op and
+    returns the current LR from the optimizer.
+    """
     model_key = get_model_config_key(config)
-    momentum = config[model_key]['lr_momentum']
-    # lr = config['General']['dpt_lr'] * (1-epoch/epoch_max)**0.9
+    momentum = config[model_key].get('lr_momentum', None)
+    if momentum is None:
+        # Scheduler-managed LR — just read and return current value
+        return optimizer.param_groups[0]['lr']
     lr = config[model_key]['clft_lr'] * (momentum ** epoch)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
-
     return lr
 
 def manage_checkpoints_by_miou(config, log_dir):

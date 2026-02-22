@@ -400,15 +400,6 @@ class MaskFormerFusion(nn.Module):
             num_classes=num_classes,
         )
 
-        # ── Direct pixel classification head ─────────────────────────────────
-        # Provides an immediate dense-prediction shortcut that produces strong
-        # gradient signal from epoch 0.  The transformer decoder output is
-        # *added* to this, so both paths are trained jointly.  Without this,
-        # early in training the Q=100 softmax attention is nearly uniform
-        # (1/Q per query), averaging all query class logits into a background-
-        # dominated prediction that collapses eval-mode metrics to zero.
-        self.direct_head = nn.Conv2d(transformer_d_model, num_classes, 1)
-
     # ------------------------------------------------------------------
     @staticmethod
     def _to_bchw(f: torch.Tensor) -> torch.Tensor:
@@ -474,23 +465,14 @@ class MaskFormerFusion(nn.Module):
         # class_logits : [B, Q, num_classes+1]
         # masks        : [B, Q, h, w]  (raw dot-product logits)
 
-        # 4. Direct pixel classification (FCN-style shortcut)
-        direct_seg = self.direct_head(pixel_features)              # [B, C, h, w]
-
-        # 5. Transformer decoder merge — paper formula:
+        # 4. Merge — paper formula (MaskFormer §3.3):
         #    segmap[c] = Σ_q  softmax(class_logits)[q,c] · sigmoid(mask)[q]
-        #    (MaskFormer §3.3 — "Each pixel is the sum over queries of the
-        #     class probability times the binary mask probability")
         b, _, h, w = masks.shape
-        cls_probs = F.softmax(class_logits, dim=-1)[..., :self.num_classes]  # [B, Q, C]
-        mask_probs = torch.sigmoid(masks)                                      # [B, Q, h, w]
-        query_seg = torch.einsum('bqc,bqhw->bchw', cls_probs, mask_probs)    # [B, C, h, w]
+        cls_probs  = F.softmax(class_logits, dim=-1)[..., :self.num_classes]  # [B, Q, C]
+        mask_probs = torch.sigmoid(masks)                                       # [B, Q, h, w]
+        segmap     = torch.einsum('bqc,bqhw->bchw', cls_probs, mask_probs)    # [B, C, h, w]
 
-        # Sum the two paths: direct head provides reliable signal from epoch 0;
-        # the query path adds structural, object-level refinement over time.
-        segmap = direct_seg + query_seg
-
-        # 6. Upsample to original input resolution
+        # 5. Upsample to original input resolution
         segmap = F.interpolate(segmap, size=(H, W),
                                mode='bilinear', align_corners=False)
 

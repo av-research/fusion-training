@@ -32,10 +32,9 @@
         "transformer_d_model": 256,
         "num_queries": 100,
         "clft_lr": 0.0001,
-        "lr_momentum": 0.99,
         "pretrained": true,
         "eos_coef": 0.1,
-        "hungarian_weight": 0.1
+        "warmup_epochs": 10
     },
     "Dataset": {
         "name": "zod",

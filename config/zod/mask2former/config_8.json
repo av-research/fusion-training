@@ -1,13 +1,13 @@
 {
-    "Summary": "ZOD MaskFormer-Small LiDAR",
+    "Summary": "ZOD Mask2Former-Large LiDAR",
     "tags": [
         "ZOD",
-        "MaskFormer",
-        "Small",
-        "LiDAR"
+        "Mask2Former",
+        "Large",
+        "Lidar"
     ],
     "CLI": {
-        "backbone": "maskformer",
+        "backbone": "mask2former",
         "mode": "lidar",
         "path": "./zod_dataset/"
     },
@@ -24,16 +24,19 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/zod/maskformer/config_2"
+        "logdir": "logs/zod/mask2former/config_8"
     },
-    "MaskFormer": {
-        "model_timm": "swinv2_small_window16_256",
+    "Mask2Former": {
+        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
         "pixel_decoder_channels": 256,
         "transformer_d_model": 256,
         "num_queries": 100,
+        "num_decoder_layers": 9,
         "clft_lr": 0.0001,
         "pretrained": true,
         "eos_coef": 0.1,
+        "aux_weight": 1.0,
+        "n_encoder_layers": 6,
         "warmup_epochs": 10
     },
     "Dataset": {
