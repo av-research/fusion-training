@@ -37,7 +37,14 @@
         "eos_coef": 0.1,
         "aux_weight": 1.0,
         "n_encoder_layers": 6,
-        "warmup_epochs": 10
+        "warmup_epochs": 10,
+        "lr_scheduler": "poly",
+        "lr_poly_power": 0.9,
+        "lr_step_milestones": [
+            0.75,
+            0.9
+        ],
+        "lr_step_gamma": 0.1
     },
     "Dataset": {
         "name": "zod",

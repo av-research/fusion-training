@@ -554,12 +554,13 @@ class Mask2FormerCriterion(nn.Module):
             eos = torch.cat([class_weights,
                              class_weights.new_tensor([no_object_coef])])
         else:
-            eos = None
+            # Foreground + background classes all weight 1; no-object weighted by eos_coef.
+            # Original Mask2Former (Cheng et al., CVPR 2022): NO_OBJECT_WEIGHT applied via
+            # a CE class weight vector, not as a scalar multiplier on the entire loss term.
+            eos = torch.ones(num_classes + 1)
+            eos[-1] = no_object_coef
 
-        if eos is not None:
-            self.register_buffer('ce_weight', eos)
-        else:
-            self.ce_weight = None
+        self.register_buffer('ce_weight', eos)
 
     # ── helpers ───────────────────────────────────────────────────────────────
 
@@ -623,7 +624,8 @@ class Mask2FormerCriterion(nn.Module):
 
             if gt_masks_ref is None or len(row_ind) == 0:
                 targets = no_obj_idx.expand(Q)
-                total_loss = total_loss + self.no_object_coef * F.cross_entropy(
+                # ce_weight[-1] = eos_coef already carries the no-object penalty
+                total_loss = total_loss + F.cross_entropy(
                     class_logits[b], targets, weight=self.ce_weight)
                 continue
 
@@ -652,7 +654,8 @@ class Mask2FormerCriterion(nn.Module):
             unmatched = torch.tensor([q for q in range(Q) if q not in matched],
                                      dtype=torch.long, device=dev)
             if unmatched.numel() > 0:
-                batch_loss = batch_loss + self.no_object_coef * F.cross_entropy(
+                # ce_weight[-1] = eos_coef; no additional scalar multiplier needed
+                batch_loss = batch_loss + F.cross_entropy(
                     class_logits[b][unmatched], no_obj_idx.expand(unmatched.numel()),
                     weight=self.ce_weight)
 
@@ -777,13 +780,6 @@ class Mask2FormerFusion(nn.Module):
             num_classes=num_classes,
             num_scales=num_scales,
         )
-
-        # ── Direct pixel classification head (FCN shortcut) ───────────────────
-        # Mirrors MaskFormerFusion: provides reliable gradient signal from
-        # epoch 0 while the masked-attention queries bootstrap.  Without this,
-        # the Q=100 softmax weighting is nearly uniform early in training,
-        # collapsing segmap to a background-dominated prediction.
-        self.direct_head = nn.Conv2d(transformer_d_model, num_classes, 1)
 
     # ------------------------------------------------------------------
     @staticmethod
