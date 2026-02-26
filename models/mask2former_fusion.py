@@ -612,19 +612,23 @@ class Mask2FormerCriterion(nn.Module):
                                   anno:         torch.Tensor,   # [B, H, W]
                                   indices:      list,           # per image: (row, col, gt_cls, gt_mask)
                                   ) -> torch.Tensor:
-        """Compute loss for one decoder layer given pre-computed matching indices."""
+        """Compute loss for one decoder layer given pre-computed matching indices.
+
+        Vectorised: builds a per-query target tensor and stacks all matched
+        mask pairs so each loss term is a single CUDA kernel call per image,
+        regardless of the number of matched queries.
+        """
         B, Q, _ = class_logits.shape
         _, _, h, w = pred_masks.shape
-        dev = class_logits.device
-        no_obj_idx = torch.tensor([self.num_classes], dtype=torch.long, device=dev)
+        dev        = class_logits.device
+        no_obj_cls = self.num_classes
         total_loss = class_logits.new_tensor(0.0)
 
         for b in range(B):
             row_ind, col_ind, gt_classes, gt_masks_ref = indices[b]
 
             if gt_masks_ref is None or len(row_ind) == 0:
-                targets = no_obj_idx.expand(Q)
-                # ce_weight[-1] = eos_coef already carries the no-object penalty
+                targets = class_logits.new_full((Q,), no_obj_cls, dtype=torch.long)
                 total_loss = total_loss + F.cross_entropy(
                     class_logits[b], targets, weight=self.ce_weight)
                 continue
@@ -637,27 +641,28 @@ class Mask2FormerCriterion(nn.Module):
             else:
                 gt_masks = gt_masks_ref.to(dev)
 
-            matched    = set(int(r) for r in row_ind)
-            batch_loss = class_logits.new_tensor(0.0)
+            row_t    = torch.as_tensor(row_ind, dtype=torch.long, device=dev)
+            col_t    = torch.as_tensor(col_ind, dtype=torch.long, device=dev)
+            gt_cls_t = torch.as_tensor(gt_classes, dtype=torch.long, device=dev)
 
-            for r, c in zip(row_ind, col_ind):
-                tgt = torch.tensor([gt_classes[c]], dtype=torch.long, device=dev)
-                batch_loss = batch_loss + self.weight_class * F.cross_entropy(
-                    class_logits[b, r].unsqueeze(0), tgt, weight=self.ce_weight)
-                batch_loss = batch_loss + self.weight_mask * F.binary_cross_entropy_with_logits(
-                    pred_masks[b, r], gt_masks[c])
-                p_sig = pred_masks[b, r].sigmoid().flatten()
-                g     = gt_masks[c].flatten()
-                dice  = 1.0 - (2*(p_sig*g).sum() + 1e-5) / (p_sig.sum() + g.sum() + 1e-5)
-                batch_loss = batch_loss + self.weight_dice * dice
+            # ── classification: one call for all Q queries ────────────────
+            targets        = class_logits.new_full((Q,), no_obj_cls, dtype=torch.long)
+            targets[row_t] = gt_cls_t[col_t]
+            batch_loss     = self.weight_class * F.cross_entropy(
+                class_logits[b], targets, weight=self.ce_weight)
 
-            unmatched = torch.tensor([q for q in range(Q) if q not in matched],
-                                     dtype=torch.long, device=dev)
-            if unmatched.numel() > 0:
-                # ce_weight[-1] = eos_coef; no additional scalar multiplier needed
-                batch_loss = batch_loss + F.cross_entropy(
-                    class_logits[b][unmatched], no_obj_idx.expand(unmatched.numel()),
-                    weight=self.ce_weight)
+            # ── mask losses: one call over all M matched pairs ────────────
+            matched_pred = pred_masks[b][row_t]   # [M, h, w]
+            matched_gt   = gt_masks[col_t]         # [M, h, w]
+
+            batch_loss = batch_loss + self.weight_mask * F.binary_cross_entropy_with_logits(
+                matched_pred, matched_gt)
+
+            p_sig  = matched_pred.sigmoid().flatten(1)   # [M, h*w]
+            g_flat = matched_gt.flatten(1)                # [M, h*w]
+            dice   = (1.0 - (2.0 * (p_sig * g_flat).sum(-1) + 1e-5)
+                      / (p_sig.sum(-1) + g_flat.sum(-1) + 1e-5))
+            batch_loss = batch_loss + self.weight_dice * dice.mean()
 
             total_loss = total_loss + batch_loss
 

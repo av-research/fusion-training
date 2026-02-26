@@ -41,12 +41,15 @@ class TrainingEngine:
         
         progress_bar = tqdm(dataloader)
         for batch in progress_bar:
-            # Move data to device
-            rgb = batch['rgb'].to(self.device, non_blocking=True)
+            # Relabel on the CPU DataLoader tensor, then send to GPU once.
+            # Avoids: GPU send → anno.cpu() sync stall → GPU send again.
+            rgb   = batch['rgb'].to(self.device, non_blocking=True)
             lidar = batch['lidar'].to(self.device, non_blocking=True)
-            anno = batch['anno'].to(self.device, non_blocking=True)
+            anno  = relabel_annotation(
+                batch['anno'], self.config
+            ).squeeze(0).to(self.device, non_blocking=True)
             
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
             
             # Prepare inputs based on modality
             rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
@@ -67,9 +70,6 @@ class TrainingEngine:
                     else:
                         output_seg = model_outputs[0]  # direct segmentation output
                 output_seg = output_seg.squeeze(1)
-                
-                # Relabel annotation
-                anno = relabel_annotation(anno.cpu(), self.config).squeeze(0).to(self.device)
                 
                 # Compute loss
                 loss = self.criterion(output_seg, anno)
@@ -105,10 +105,12 @@ class TrainingEngine:
         with torch.no_grad():
             progress_bar = tqdm(dataloader)
             for batch in progress_bar:
-                # Move data to device
-                rgb = batch['rgb'].to(self.device, non_blocking=True)
+                # Relabel on the CPU DataLoader tensor, then send to GPU once.
+                rgb   = batch['rgb'].to(self.device, non_blocking=True)
                 lidar = batch['lidar'].to(self.device, non_blocking=True)
-                anno = batch['anno'].to(self.device, non_blocking=True)
+                anno  = relabel_annotation(
+                    batch['anno'], self.config
+                ).squeeze(0).to(self.device, non_blocking=True)
                 
                 # Prepare inputs based on modality
                 rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
@@ -129,9 +131,6 @@ class TrainingEngine:
                         else:
                             output_seg = model_outputs[0]  # direct segmentation output
                     output_seg = output_seg.squeeze(1)
-                    
-                    # Relabel annotation
-                    anno = relabel_annotation(anno.cpu(), self.config).squeeze(0).to(self.device)
                     
                     # Compute loss
                     loss = self.criterion(output_seg, anno)
@@ -211,6 +210,7 @@ class TrainingEngine:
         print('Saving final model checkpoint...')
         final_epoch = epochs - 1 if epochs > 0 else 0
         save_model_dict(self.config, final_epoch, self.model, self.optimizer, last_epoch_uuid)
+        self.writer.close()
         print('Training Complete')
     
     def _log_tensorboard(self, train_metrics, val_metrics, epoch):
@@ -226,7 +226,7 @@ class TrainingEngine:
                 'valid': val_metrics['epoch_IoU'][i]
             }, epoch)
         
-        self.writer.close()
+        self.writer.flush()  # keep writer open; flush to disk without closing
     
     def _log_and_upload_results(self, epoch, train_metrics, val_metrics, lr, epoch_time, system_info=None):
         """Log results locally and upload to vision service."""

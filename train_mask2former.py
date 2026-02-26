@@ -57,9 +57,13 @@ class Mask2FormerTrainingEngine(TrainingEngine):
         for batch in progress_bar:
             rgb   = batch['rgb'].to(self.device,   non_blocking=True)
             lidar = batch['lidar'].to(self.device,  non_blocking=True)
-            anno  = batch['anno'].to(self.device,   non_blocking=True)
+            # Relabel on the CPU DataLoader tensor, then send to GPU once.
+            # Avoids: GPU send → anno.cpu() sync stall → GPU send again.
+            anno  = relabel_annotation(
+                batch['anno'], self.config
+            ).squeeze(0).to(self.device, non_blocking=True)
 
-            self.optimizer.zero_grad()
+            self.optimizer.zero_grad(set_to_none=True)
 
             rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
 
@@ -69,10 +73,6 @@ class Mask2FormerTrainingEngine(TrainingEngine):
                 output_seg       = model_outputs[1].squeeze(1)   # [B, C, H, W]
                 all_class_logits = model_outputs[2]               # list[B, Q, C+1]
                 all_masks        = model_outputs[3]               # list[B, Q, h, w]
-
-                anno = relabel_annotation(
-                    anno.cpu(), self.config
-                ).squeeze(0).to(self.device)
 
                 loss = self.hungarian_criterion(
                     all_class_logits, all_masks, anno
@@ -308,6 +308,7 @@ def main():
         drop_last=True,
         num_workers=8,
         persistent_workers=True,
+        prefetch_factor=4,
     )
     valid_dataloader = DataLoader(
         valid_data,
@@ -317,6 +318,7 @@ def main():
         drop_last=False,  # evaluate every validation sample
         num_workers=8,
         persistent_workers=True,
+        prefetch_factor=4,
     )
 
     # Mask2Former / Hungarian criterion (no per-class weights — original uses eos_coef only)
