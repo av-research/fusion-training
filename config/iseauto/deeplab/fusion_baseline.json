@@ -1,0 +1,54 @@
+{
+    "Summary": "ISEAUTO DeepLabV3+ Fusion Baseline",
+    "tags": ["ISEAUTO", "DeepLabV3+", "Fusion"],
+    "CLI": {"backbone": "deeplabv3plus", "mode": "fusion", "path": "./xod_dataset/"},
+    "General": {
+        "device": "cuda:0",
+        "epochs": 200,
+        "batch_size": 8,
+        "path_predicted_images": "output",
+        "seed": 0,
+        "resume_training": false,
+        "reset_lr": false,
+        "early_stop_patience": 200,
+        "max_epochs": 2,
+        "model_path": ""
+    },
+    "Log": {"logdir": "logs/iseauto/deeplab/fusion_baseline"},
+    "DeepLabV3Plus": {
+        "backbone": "resnet101",
+        "pretrained": true,
+        "fusion_type": "residual_average",
+        "learning_rate": 8e-05,
+        "warmup_epochs": 10,
+        "lr_scheduler": {"type": "cosine", "T_max": 200, "eta_min": 1e-07}
+    },
+    "Dataset": {
+        "name": "iseauto",
+        "dataset_root": "./xod_dataset",
+        "train_split": "./xod_dataset/train.txt",
+        "val_split": "./xod_dataset/validation.txt",
+        "annotation_path": "annotation",
+        "dataset_classes": [
+            {"name": "background", "index": 0},
+            {"name": "vehicle", "index": 1},
+            {"name": "human", "index": 2}
+        ],
+        "train_classes": [
+            {"name": "background", "index": 0, "weight": 0.1, "dataset_mapping": [0], "color": [0, 0, 0]},
+            {"name": "vehicle", "index": 1, "weight": 10.0, "dataset_mapping": [1], "color": [128, 0, 128]},
+            {"name": "human", "index": 2, "weight": 20.0, "dataset_mapping": [2], "color": [0, 255, 255]}
+        ],
+        "transforms": {
+            "resize": 256,
+            "random_rotate_range": 20,
+            "p_flip": 0.5,
+            "p_crop": 0.3,
+            "p_rot": 0.4,
+            "image_mean": [0.485, 0.456, 0.406],
+            "image_std": [0.229, 0.224, 0.225],
+            "lidar_mean": [0.8241, 0.42979, 0.51011],
+            "lidar_std": [0.16968, 0.33902, 0.34808]
+        }
+    }
+}

@@ -1,26 +1,26 @@
 {
-    "Summary": "Iseauto Lidar CLFT-Base",
-    "tags": ["Iseauto", "CLFT-Base", "Lidar"],
-    "CLI": {"backbone": "clft", "mode": "lidar", "path": "./xod_dataset/"},
+    "Summary": "ISEAUTO CLFT-Hybrid RGB",
+    "tags": ["ISEAUTO", "CLFT", "Hybrid", "RGB"],
+    "CLI": {"backbone": "clft", "mode": "rgb", "path": "./xod_dataset/"},
     "General": {
         "device": "cuda:0",
-        "epochs": 100,
+        "epochs": 200,
         "batch_size": 8,
         "path_predicted_images": "output",
         "seed": 0,
         "resume_training": false,
-        "resume_training_model_path": "",
         "reset_lr": false,
         "early_stop_patience": 200,
         "max_epochs": 2,
         "model_path": ""
     },
-    "Log": {"logdir": "./logs/iseauto/clft/config_4/"},
+    "Log": {"logdir": "logs/iseauto/clft/config_4"},
     "CLFT": {
         "emb_dim": 768,
         "hooks": [2, 5, 8, 11],
-        "model_timm": "vit_base_patch16_384",
+        "model_timm": "vit_base_resnet50_384",
         "clft_lr": 8e-05,
+        "warmup_epochs": 10,
         "patch_size": 16,
         "reassembles": [4, 8, 16, 32],
         "read": "projection",
@@ -34,10 +34,19 @@
     "Dataset": {
         "name": "iseauto",
         "dataset_root": "./xod_dataset",
-        "annotation_path": "annotation",
         "train_split": "./xod_dataset/train.txt",
         "val_split": "./xod_dataset/validation.txt",
-        "splits": {"split_train": 0.6, "split_val": 0.2, "split_test": 0.2},
+        "annotation_path": "annotation",
+        "dataset_classes": [
+            {"name": "background", "index": 0},
+            {"name": "vehicle", "index": 1},
+            {"name": "human", "index": 2}
+        ],
+        "train_classes": [
+            {"name": "background", "index": 0, "weight": 0.1, "dataset_mapping": [0], "color": [0, 0, 0]},
+            {"name": "vehicle", "index": 1, "weight": 10.0, "dataset_mapping": [1], "color": [128, 0, 128]},
+            {"name": "human", "index": 2, "weight": 20.0, "dataset_mapping": [2], "color": [0, 255, 255]}
+        ],
         "transforms": {
             "resize": 384,
             "random_rotate_range": 20,
@@ -46,18 +55,8 @@
             "p_rot": 0.4,
             "image_mean": [0.485, 0.456, 0.406],
             "image_std": [0.229, 0.224, 0.225],
-            "lidar_mean": [0.812386, 0.148879, 0.032874],
-            "lidar_std": [0.194681, 0.285717, 0.153287]
-        },
-        "dataset_classes": [
-            {"name": "background", "index": 0},
-            {"name": "vehicle", "index": 1},
-            {"name": "human", "index": 2}
-        ],
-        "train_classes": [
-            {"name": "background", "index": 0, "weight": 0.5, "dataset_mapping": [0], "color": [0, 0, 0]},
-            {"name": "vehicle", "index": 1, "weight": 4.0, "dataset_mapping": [1], "color": [128, 0, 128]},
-            {"name": "human", "index": 2, "weight": 12.0, "dataset_mapping": [2], "color": [0, 255, 255]}
-        ]
+            "lidar_mean": [0.8241, 0.42979, 0.51011],
+            "lidar_std": [0.16968, 0.33902, 0.34808]
+        }
     }
 }

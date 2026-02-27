@@ -32,10 +32,7 @@
         "pretrained": true
     },
     "Ensemble": {
-        "models": [
-            "./logs/zod/clft/config_1/checkpoints/epoch_99_d172004a-7072-4bea-9240-578b5d146eb3.pth",
-            "./logs/zod/clft/transfer_from_iseauto_config_1/checkpoints/epoch_97_*.pth"
-        ],
+        "models": ["./logs/zod/clft/config_1/checkpoints/epoch_99_d172004a-7072-4bea-9240-578b5d146eb3.pth", "./logs/zod/clft/transfer_from_iseauto_config_1/checkpoints/epoch_97_*.pth"],
         "weights": [0.6, 0.4]
     },
     "Dataset": {
@@ -44,7 +41,6 @@
         "annotation_path": "annotation_camera_only",
         "train_split": "./zod_dataset/test.txt",
         "val_split": "./zod_dataset/test.txt",
-        "splits": {"split_train": 0.6, "split_val": 0.2, "split_test": 0.2},
         "transforms": {
             "resize": 384,
             "random_rotate_range": 0,

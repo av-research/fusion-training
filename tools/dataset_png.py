@@ -56,6 +56,9 @@ class DatasetPNG(Dataset):
             self.p_rot = 0
 
         self.img_size = config['Dataset']['transforms']['resize']
+        self.lidar_normalize = transforms.Normalize(
+            mean=config['Dataset']['transforms']['lidar_mean'],
+            std=config['Dataset']['transforms']['lidar_std'])
         self.rgb_normalize = transforms.Compose([
             transforms.Resize((self.img_size, self.img_size),
                             interpolation=transforms.InterpolationMode.BILINEAR),
@@ -176,7 +179,7 @@ class DatasetPNG(Dataset):
 
         # Resize lidar to match image size and convert to tensor
         lidar_resized = transforms.Resize((self.img_size, self.img_size))(lidar_aug)
-        lidar_tensor = TF.to_tensor(lidar_resized)
+        lidar_tensor = self.lidar_normalize(TF.to_tensor(lidar_resized))
 
         # Create dummy camera coordinates (not used in PNG version)
         max_len = 300000

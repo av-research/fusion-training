@@ -26,7 +26,6 @@
         "dataset_root": "./waymo_dataset",
         "train_split": "./waymo_dataset/splits_clft/train_all.txt",
         "val_split": "./waymo_dataset/splits_clft/early_stop_valid.txt",
-        "splits": {"split_train": 0.6, "split_val": 0.2, "split_test": 0.2},
         "transforms": {
             "resize": 384,
             "random_rotate_range": 20,

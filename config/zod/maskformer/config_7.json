@@ -1,16 +1,7 @@
 {
     "Summary": "ZOD MaskFormer-Large RGB",
-    "tags": [
-        "ZOD",
-        "MaskFormer",
-        "Large",
-        "RGB"
-    ],
-    "CLI": {
-        "backbone": "maskformer",
-        "mode": "rgb",
-        "path": "./zod_dataset/"
-    },
+    "tags": ["ZOD", "MaskFormer", "Large", "RGB"],
+    "CLI": {"backbone": "maskformer", "mode": "rgb", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
         "epochs": 200,
@@ -23,145 +14,51 @@
         "max_epochs": 2,
         "model_path": ""
     },
-    "Log": {
-        "logdir": "logs/zod/maskformer/config_7"
-    },
+    "Log": {"logdir": "logs/zod/maskformer/config_7"},
     "MaskFormer": {
         "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
         "pixel_decoder_channels": 256,
         "transformer_d_model": 256,
         "num_queries": 100,
-        "clft_lr": 0.0001,
-        "pretrained": true,
-        "eos_coef": 0.1,
+        "clft_lr": 8e-05,
         "warmup_epochs": 10,
         "lr_scheduler": "poly",
         "lr_poly_power": 0.9,
-        "lr_step_milestones": [
-            0.75,
-            0.9
-        ],
-        "lr_step_gamma": 0.1
+        "lr_step_milestones": [0.75, 0.9],
+        "lr_step_gamma": 0.1,
+        "pretrained": true,
+        "eos_coef": 0.1
     },
     "Dataset": {
         "name": "zod",
-        "dataset_root": "./zod_dataset/",
-        "annotation_path": "annotation_camera_only",
+        "dataset_root": "./zod_dataset",
         "train_split": "./zod_dataset/train.txt",
         "val_split": "./zod_dataset/validation.txt",
-        "splits": {
-            "split_train": 0.6,
-            "split_val": 0.2,
-            "split_test": 0.2
-        },
+        "annotation_path": "annotation_camera_only",
         "dataset_classes": [
-            {
-                "name": "background",
-                "index": 0
-            },
-            {
-                "name": "ignore",
-                "index": 1
-            },
-            {
-                "name": "vehicle",
-                "index": 2
-            },
-            {
-                "name": "sign",
-                "index": 3
-            },
-            {
-                "name": "cyclist",
-                "index": 4
-            },
-            {
-                "name": "pedestrian",
-                "index": 5
-            }
+            {"name": "background", "index": 0},
+            {"name": "ignore", "index": 1},
+            {"name": "vehicle", "index": 2},
+            {"name": "sign", "index": 3},
+            {"name": "cyclist", "index": 4},
+            {"name": "pedestrian", "index": 5}
         ],
         "train_classes": [
-            {
-                "name": "background",
-                "index": 0,
-                "weight": 0.1,
-                "dataset_mapping": [
-                    0,
-                    1
-                ],
-                "color": [
-                    0,
-                    0,
-                    0
-                ]
-            },
-            {
-                "name": "vehicle",
-                "index": 1,
-                "weight": 10.0,
-                "dataset_mapping": [
-                    2
-                ],
-                "color": [
-                    128,
-                    0,
-                    128
-                ]
-            },
-            {
-                "name": "sign",
-                "index": 2,
-                "weight": 15.0,
-                "dataset_mapping": [
-                    3
-                ],
-                "color": [
-                    255,
-                    0,
-                    0
-                ]
-            },
-            {
-                "name": "human",
-                "index": 3,
-                "weight": 20.0,
-                "dataset_mapping": [
-                    4,
-                    5
-                ],
-                "color": [
-                    0,
-                    255,
-                    255
-                ]
-            }
+            {"name": "background", "index": 0, "weight": 0.1, "dataset_mapping": [0, 1], "color": [0, 0, 0]},
+            {"name": "vehicle", "index": 1, "weight": 10.0, "dataset_mapping": [2], "color": [128, 0, 128]},
+            {"name": "sign", "index": 2, "weight": 17.0, "dataset_mapping": [3], "color": [255, 0, 0]},
+            {"name": "human", "index": 3, "weight": 20.0, "dataset_mapping": [4, 5], "color": [0, 255, 255]}
         ],
         "transforms": {
-            "resize": 256,
+            "resize": 384,
             "random_rotate_range": 20,
             "p_flip": 0.5,
             "p_crop": 0.3,
             "p_rot": 0.4,
-            "image_mean": [
-                0.325291,
-                0.325736,
-                0.331795
-            ],
-            "image_std": [
-                0.168061,
-                0.179542,
-                0.204609
-            ],
-            "lidar_mean": [
-                0.049261,
-                0.049575,
-                0.092697
-            ],
-            "lidar_std": [
-                0.07696,
-                0.073541,
-                0.098311
-            ]
+            "image_mean": [0.485, 0.456, 0.406],
+            "image_std": [0.229, 0.224, 0.225],
+            "lidar_mean": [0.25258, 0.49281, 0.49566],
+            "lidar_std": [0.23424, 0.03092, 0.16651]
         }
     }
 }

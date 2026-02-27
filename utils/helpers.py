@@ -19,12 +19,8 @@ def creat_dir(config):
 
 def get_annotation_path(cam_path, dataset_name, config):
     """Get annotation path based on dataset and config."""
-    if dataset_name in ['zod', 'iseauto']:
-        anno_folder = config['Dataset']['annotation_path']
-        return cam_path.replace('camera', anno_folder)
-    else:  # waymo
-        # Use same annotation path as training: /annotation/ directories
-        return cam_path.replace('camera/', 'annotation/')
+    anno_folder = config['Dataset']['annotation_path']
+    return cam_path.replace('camera', anno_folder)
 
 def relabel_annotation(annotation, config):
     """

@@ -1,17 +1,17 @@
 #!/bin/bash 
-#SBATCH --job-name=ise-base                ### job name
+#SBATCH --job-name=i-swin              ### job name
 #SBATCH -n 1
-#SBATCH -p gpu                  ### use gpu
-#SBATCH --gres=gpu:A100:1               ### specifying the GPU type
+#SBATCH -p gpu                         ### use gpu
+#SBATCH --gres=gpu:A100:1              ### specifying the GPU type
 #SBATCH --constraint="A100-80"
 #SBATCH --cpus-per-task=12
-#SBATCH --mem=24G
-#SBATCH -t 5-0                  ### time limit 
+#SBATCH --mem=32G
+#SBATCH -t 5-0                         ### time limit 
 #SBATCH --mail-type=ALL
 #SBATCH --account=project_autolab
 
 ## run job
-source venv/bin/activate
+source venv/bin/activate 
 
 python train_swin.py --config config/iseauto/swin/config_1.json
 python test_swin.py --config config/iseauto/swin/config_1.json
