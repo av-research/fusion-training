@@ -68,11 +68,7 @@ class DatasetPNG(Dataset):
                 std=config['Dataset']['transforms']['image_std'])
         ])
 
-        # For Swin models, annotations should match the output resolution (resample_dim)
-        if 'SwinFusion' in config:
-            self.anno_size = config['SwinFusion']['resample_dim']
-        else:
-            self.anno_size = self.img_size
+        self.anno_size = self.img_size
 
         self.anno_resize = transforms.Resize((self.anno_size, self.anno_size),
                                            interpolation=transforms.InterpolationMode.NEAREST)
