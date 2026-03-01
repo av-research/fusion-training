@@ -47,10 +47,10 @@
             {"name": "background", "index": 5}
         ],
         "train_classes": [
-            {"name": "background", "index": 0, "weight": 0.1, "dataset_mapping": [0, 5], "color": [0, 0, 0]},
-            {"name": "vehicle", "index": 1, "weight": 5.0, "dataset_mapping": [1], "color": [128, 0, 128]},
-            {"name": "sign", "index": 2, "weight": 35.0, "dataset_mapping": [3], "color": [255, 0, 0]},
-            {"name": "human", "index": 3, "weight": 20.0, "dataset_mapping": [2, 4], "color": [0, 255, 255]}
+            {"name": "background", "index": 0, "weight": 0.5, "dataset_mapping": [0, 5], "color": [0, 0, 0]},
+            {"name": "vehicle", "index": 1, "weight": 4.0, "dataset_mapping": [1], "color": [128, 0, 128]},
+            {"name": "sign", "index": 2, "weight": 4.0, "dataset_mapping": [3], "color": [255, 0, 0]},
+            {"name": "human", "index": 3, "weight": 10.0, "dataset_mapping": [2, 4], "color": [0, 255, 255]}
         ],
         "transforms": {
             "resize": 256,
