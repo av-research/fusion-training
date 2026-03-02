@@ -64,9 +64,9 @@ RESIZE = {
 CLASS_WEIGHTS = {
     "waymo": {
         "background": 0.5,
-        "vehicle":    4.0,   # freq=4.1% -> sqrt(0.3/4.1)*20 ≈ 5.4 -> rounded to 5.0
-        "human":     10.0,   # anchor
-        "sign":      4.0,   # freq=0.1% -> sqrt(0.3/0.1)*20 ≈ 34.6 -> rounded to 35.0
+        "vehicle":    4.0,
+        "human":     10.0,
+        "sign":      10.0, 
     },
     "zod": {
         "background": 0.1,
