@@ -43,7 +43,7 @@ class MaskFormerTrainingEngine(TrainingEngine):
         self.scheduler           = scheduler
 
     def train_epoch(self, dataloader, modality, num_classes):
-        """One training epoch with CE + Hungarian matching loss."""
+        """One training epoch with Hungarian matching loss + auxiliary losses."""
         from torch.amp import autocast
         from utils.helpers import relabel_annotation
 
@@ -64,17 +64,19 @@ class MaskFormerTrainingEngine(TrainingEngine):
 
             with autocast('cuda'):
                 model_outputs = self.model(rgb_input, lidar_input, modality)
-                # model returns (None, segmap, class_logits, masks)
+                # model returns (None, segmap, class_logits, masks, aux_outputs)
                 output_seg    = model_outputs[1].squeeze(1)   # [B,C,H,W]
-                class_logits  = model_outputs[2]               # [B,Q,C+1]
-                pred_masks    = model_outputs[3]               # [B,Q,h,w]
+                class_logits  = model_outputs[2]              # [B,Q,C+1]
+                pred_masks    = model_outputs[3]              # [B,Q,h,w]
+                aux_outputs   = model_outputs[4]              # list of (cls, mask)
 
                 anno = relabel_annotation(
                     anno.cpu(), self.config
                 ).squeeze(0).to(self.device)
 
                 loss = self.hungarian_criterion(
-                    class_logits, pred_masks, anno
+                    class_logits, pred_masks, anno,
+                    aux_outputs=aux_outputs,
                 )
 
             self.metrics_calc.update_accumulators(
@@ -123,17 +125,19 @@ class MaskFormerTrainingEngine(TrainingEngine):
 
                 with autocast('cuda'):
                     model_outputs = self.model(rgb_input, lidar_input, modality)
-                    # model returns (None, segmap, class_logits, masks)
+                    # model returns (None, segmap, class_logits, masks, aux_outputs)
                     output_seg   = model_outputs[1].squeeze(1)  # [B,C,H,W]
-                    class_logits = model_outputs[2]              # [B,Q,C+1]
-                    pred_masks   = model_outputs[3]              # [B,Q,h,w]
+                    class_logits = model_outputs[2]             # [B,Q,C+1]
+                    pred_masks   = model_outputs[3]             # [B,Q,h,w]
+                    aux_outputs  = model_outputs[4]             # list of (cls, mask)
 
                     anno = relabel_annotation(
                         anno.cpu(), self.config
                     ).squeeze(0).to(self.device)
 
                     loss = self.hungarian_criterion(
-                        class_logits, pred_masks, anno
+                        class_logits, pred_masks, anno,
+                        aux_outputs=aux_outputs,
                     )
 
                 self.metrics_calc.update_accumulators(

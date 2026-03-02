@@ -3,20 +3,32 @@
 """
 MaskFormer-based fusion model for camera-lidar segmentation.
 
-Pure-PyTorch implementation — no Detectron2 dependency.
+Pure-PyTorch implementation faithful to Cheng et al.,
+"Per-Pixel Classification is Not All You Need for Semantic Segmentation",
+NeurIPS 2021.  Reference: facebookresearch/MaskFormer.
 
-Architecture (faithful to Cheng et al., "Per-Pixel Classification is Not All
-You Need for Semantic Segmentation", NeurIPS 2021):
-
+Architecture:
   1. Shared backbone (timm) extracts multi-scale features.
   2. PixelDecoder (FPN-style) produces rich pixel-level feature maps.
   3. TransformerDecoder cross-attends N learnable object queries against the
-     pixel features, producing per-query class logits and binary mask
-     predictions.
-  4. At inference the query outputs are merged into a dense segmentation map:
-       segmap[c] = Σ_q  softmax(class_logits_q)[c] · sigmoid(mask_q)
-     so the output is compatible with the existing CrossEntropyLoss training
-     engine without any wiring changes.
+     pixel features.  ALL 6 intermediate layer outputs are returned for
+     auxiliary (deep) supervision, matching deep_supervision=True in the
+     official TransformerPredictor.
+  4. At inference the final-layer query outputs are merged into a dense
+     segmentation map (official semantic_inference formula):
+       segmap[c] = Σ_q  softmax(class_logits_q)[c]  ×  sigmoid(mask_q)
+     where the no-object column is simply dropped, not used to gate.
+
+Loss (MaskFormerCriterion / SetCriterion):
+  Matching cost : class CE + focal-loss (mask) + dice (mask)
+  Training loss : weight_class × CE  +  weight_mask × focal  +  weight_dice × dice
+  Applied to final AND all auxiliary decoder layer outputs.
+  Default weights match the paper (class=2, mask=5, dice=5, eos=0.1).
+
+Known deviation from original:
+  The pixel decoder is a plain FPN without the transformer encoder layer
+  (TransformerEncoderPixelDecoder) used in the official Swin configs.
+  This is a deliberate simplification for the small-dataset fusion setting.
 
 Camera-lidar fusion is handled by element-wise addition of rgb and lidar
 backbone features (early-fusion variant), identical to other models in this
@@ -30,6 +42,55 @@ import torch.nn as nn
 import torch.nn.functional as F
 import timm
 from scipy.optimize import linear_sum_assignment
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Loss helpers — faithful to facebookresearch/MaskFormer criterion.py
+# (Cheng et al., "Per-Pixel Classification is Not All You Need", NeurIPS 2021)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _sigmoid_focal_loss(inputs: torch.Tensor,
+                        targets: torch.Tensor,
+                        num_masks: float,
+                        alpha: float = 0.25,
+                        gamma: float = 2.0) -> torch.Tensor:
+    """Sigmoid focal loss normalised by num_masks."""
+    prob    = inputs.sigmoid()
+    ce_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+    p_t     = prob * targets + (1.0 - prob) * (1.0 - targets)
+    loss    = ce_loss * ((1.0 - p_t) ** gamma)
+    alpha_t = alpha * targets + (1.0 - alpha) * (1.0 - targets)
+    return (alpha_t * loss).mean(1).sum() / num_masks
+
+
+def _dice_loss(inputs: torch.Tensor,
+               targets: torch.Tensor,
+               num_masks: float) -> torch.Tensor:
+    """Dice loss normalised by num_masks."""
+    p   = inputs.sigmoid().flatten(1)
+    t   = targets.flatten(1)
+    num = 2.0 * (p * t).sum(-1)
+    den = p.sum(-1) + t.sum(-1)
+    return (1.0 - (num + 1.0) / (den + 1.0)).sum() / num_masks
+
+
+@torch.no_grad()
+def _batch_focal_cost(pred_flat: torch.Tensor,
+                      gt_flat:   torch.Tensor,
+                      alpha: float = 0.25,
+                      gamma: float = 2.0) -> torch.Tensor:
+    """Vectorised focal-loss cost matrix [Q, M] for Hungarian matching.
+
+    pred_flat : [Q, HW]  raw logits
+    gt_flat   : [M, HW]  binary float masks
+    """
+    prob = pred_flat.sigmoid()
+    fp   = alpha * ((1.0 - prob) ** gamma) * F.binary_cross_entropy_with_logits(
+               pred_flat, torch.ones_like(pred_flat), reduction='none')   # [Q, HW]
+    fn   = (1.0 - alpha) * (prob ** gamma) * F.binary_cross_entropy_with_logits(
+               pred_flat, torch.zeros_like(pred_flat), reduction='none')  # [Q, HW]
+    hw   = pred_flat.shape[1]
+    return (torch.einsum('qn,mn->qm', fp, gt_flat) +
+            torch.einsum('qn,mn->qm', fn, 1.0 - gt_flat)) / hw
 
 
 class ResidualConvUnit(nn.Module):
@@ -146,11 +207,16 @@ class TransformerDecoder(nn.Module):
 
     def forward(self, pixel_features: torch.Tensor):
         """
+        Runs all decoder layers and returns outputs from every layer for
+        auxiliary (deep) supervision, matching the official MaskFormer
+        TransformerPredictor (deep_supervision=True).
+
         Args:
             pixel_features: [B, C, H, W]  (output of PixelDecoder)
         Returns:
-            class_logits : [B, num_queries, num_classes+1]
-            masks        : [B, num_queries, H, W]   (raw logits, not sigmoid)
+            all_class_logits : list[Tensor[B, Q, C+1]], length = num_layers
+            all_masks        : list[Tensor[B, Q, H, W]], length = num_layers
+            Index -1 is the final (main) output; 0..−2 are auxiliary.
         """
         b, c, h, w = pixel_features.shape
 
@@ -160,37 +226,48 @@ class TransformerDecoder(nn.Module):
         memory_with_pos = (pixel_features + pos).flatten(2).permute(0, 2, 1)  # [B, H*W, C]
 
         # Broadcast queries over the batch
-        queries = self.query_embed.weight.unsqueeze(0).expand(b, -1, -1)  # [B, Q, C]
+        q = self.query_embed.weight.unsqueeze(0).expand(b, -1, -1)  # [B, Q, C]
 
-        # Cross-attend queries to positionally-encoded pixel memory.
-        # memory_with_pos carries spatial info so queries can learn WHERE to attend.
-        decoded = self.decoder(queries, memory_with_pos)  # [B, Q, C]
+        # Iterate through decoder layers, collecting per-layer predictions for
+        # auxiliary losses (deep supervision) — identical to the official
+        # MaskFormer TransformerPredictor with deep_supervision=True.
+        all_class_logits: list[torch.Tensor] = []
+        all_masks:        list[torch.Tensor] = []
 
-        # Per-query class distribution
-        class_logits = self.class_embed(decoded)  # [B, Q, num_classes+1]
+        for layer in self.decoder.layers:
+            q = layer(q, memory_with_pos)
 
-        # Per-query mask: dot product with every pixel feature.
-        # Scale by 1/√d_model to prevent sigmoid saturation at initialisation
-        # (same reasoning as scaled dot-product attention).
-        mask_feat = self.mask_embed(decoded)                          # [B, Q, C]
-        masks = torch.einsum('bqc,bchw->bqhw', mask_feat,
-                             pixel_features) / math.sqrt(self.d_model)
+            # Per-query class logits and mask dot-product for this layer
+            cl = self.class_embed(q)                                         # [B, Q, C+1]
+            mf = self.mask_embed(q)                                          # [B, Q, C]
+            m  = torch.einsum('bqc,bchw->bqhw', mf,
+                              pixel_features) / math.sqrt(self.d_model)      # [B, Q, h, w]
+            all_class_logits.append(cl)
+            all_masks.append(m)
 
-        return class_logits, masks
+        return all_class_logits, all_masks
 
 
 class MaskFormerCriterion(nn.Module):
     """Bipartite matching loss for MaskFormer.
 
-    For each image in the batch:
-      1. Extract GT segments from the semantic annotation map
-         (one binary mask + class index per unique class present).
-      2. Build a [Q × M] cost matrix (class + mask-BCE + mask-Dice).
-      3. Run Hungarian algorithm to find the optimal query → GT assignment.
-      4. Compute matched-pair loss (CE + mask BCE + Dice) and
-         unmatched-query no-object CE loss.
+    Faithful to facebookresearch/MaskFormer SetCriterion.  For each image:
+      1. Extract GT segments from the semantic annotation map.
+      2. Build a [Q × M] cost matrix (class CE + focal mask + dice mask).
+      3. Run Hungarian algorithm to find optimal query → GT assignment.
+      4. Classification CE over ALL queries (matched → GT class,
+         unmatched → no-object), normalised by Q via F.cross_entropy.
+      5. Sigmoid focal loss + Dice loss over matched pairs,
+         normalised by the total number of matched GT segments.
 
-    The result is averaged over the batch.
+    Deep-supervision: when aux_outputs are provided (list of
+    (class_logits, masks) from intermediate decoder layers), the same loss
+    formula is applied to each auxiliary output and the results are summed.
+
+    Loss weights (paper §A.2 Table 8):
+      cost  : class=1, mask=20, dice=1
+      loss  : class=2, mask=5,  dice=5
+      eos_coef (no-object weight in class CE) = 0.1
     """
 
     def __init__(self,
@@ -274,131 +351,133 @@ class MaskFormerCriterion(nn.Module):
         gt_flat   = gt_masks.flatten(1)           # [M, HW]
         HW        = pred_flat.shape[1]
 
-        # Binary cross-entropy cost with per-segment balanced pos_weight.
-        # For heavily imbalanced masks (e.g. background ~95% positive pixels)
-        # plain BCE is dominated by trivially-correct positive pixels and gives
-        # almost no gradient signal to suppress the mask at negative (foreground)
-        # pixels.  Balanced pos_weight = neg_pixels/pos_pixels equalises the BCE
-        # contribution of positive and negative spatial locations so the Hungarian
-        # assignment also accounts for mask sharpness, not just mass.
-        pos_count  = gt_flat.sum(-1).clamp(min=1)        # [M]
-        neg_count  = (HW - pos_count).clamp(min=1)       # [M]
-        pw         = (neg_count / pos_count).clamp(0.05, 20.0)  # [M]
-        p_exp = pred_flat.unsqueeze(1).expand(Q, M, HW)  # [Q, M, HW]
-        g_exp = gt_flat.unsqueeze(0).expand(Q, M, HW)    # [Q, M, HW]
-        # Apply per-segment pos_weight: scale positive term by pw[m]
-        pw_exp = pw.view(1, M, 1).expand(Q, M, HW)
-        bce_cost_raw = F.binary_cross_entropy_with_logits(
-            p_exp, g_exp, reduction='none')               # [Q, M, HW]
-        # Re-weight: positive pixels get pw weight, negative pixels get 1
-        bce_cost_w = bce_cost_raw * (g_exp * (pw_exp - 1.0) + 1.0)
-        bce_cost = bce_cost_w.mean(-1)                    # [Q, M]
+        # Mask cost: sigmoid focal loss — matches official HungarianMatcher
+        # (facebookresearch/MaskFormer matcher.py: batch_sigmoid_focal_loss)
+        focal_cost = _batch_focal_cost(pred_flat, gt_flat)             # [Q, M]
 
         # Dice cost
-        num      = 2 * torch.einsum('qn,mn->qm', pred_sig, gt_flat) # [Q, M]
-        den      = pred_sig.sum(-1, keepdim=True) + gt_flat.sum(-1).unsqueeze(0) + 1e-5
-        dice_cost = 1.0 - num / den                                  # [Q, M]
+        num       = 2 * torch.einsum('qn,mn->qm', pred_sig, gt_flat)  # [Q, M]
+        den       = pred_sig.sum(-1, keepdim=True) + gt_flat.sum(-1).unsqueeze(0) + 1e-5
+        dice_cost = 1.0 - num / den                                    # [Q, M]
 
         return (self.cost_class * class_cost
-                + self.cost_mask  * bce_cost
+                + self.cost_mask  * focal_cost
                 + self.cost_dice  * dice_cost)
 
     # ── Forward ───────────────────────────────────────────────────────────────
 
-    def forward(self,
-                class_logits: torch.Tensor,   # [B, Q, C+1]
-                pred_masks:   torch.Tensor,   # [B, Q, h, w]
-                anno:         torch.Tensor,   # [B, H, W]  long
-                ) -> torch.Tensor:
+    def _loss_single_output(
+        self,
+        class_logits: torch.Tensor,   # [B, Q, C+1]
+        pred_masks:   torch.Tensor,   # [B, Q, h, w]
+        anno_down:    torch.Tensor,   # [B, h, w]  long  (already downsampled)
+    ) -> torch.Tensor:
+        """Compute Hungarian-matching loss for one set of predictions.
+
+        Called for both the final decoder output and each auxiliary output.
+        Faithful to facebookresearch/MaskFormer SetCriterion.
+        """
         B, Q, _ = class_logits.shape
-        _, _, h, w = pred_masks.shape
         dev = class_logits.device
-
-        # Downsample annotation to pixel-decoder resolution for mask matching
-        anno_down = F.interpolate(
-            anno.float().unsqueeze(1), size=(h, w), mode='nearest'
-        ).long().squeeze(1)                          # [B, h, w]
-
-        total_loss = class_logits.new_tensor(0.0)
         no_obj_idx = torch.tensor([self.num_classes], dtype=torch.long, device=dev)
+
+        total_loss  = class_logits.new_tensor(0.0)
+        num_matched = 0  # total matched GT segments across batch (for mask normalisation)
+
+        # Collect matched-pair mask tensors for batch-normalised focal+dice
+        all_pm: list[torch.Tensor] = []
+        all_gm: list[torch.Tensor] = []
 
         for b in range(B):
             segments = self._build_gt(anno_down[b])
 
             if not segments:
-                # Degenerate: push all queries to no-object.
-                # ce_weight[-1] already carries eos_coef so no extra scalar.
-                targets = no_obj_idx.expand(Q)
+                # Degenerate: push all queries to no-object
                 total_loss = total_loss + F.cross_entropy(
-                    class_logits[b], targets,
+                    class_logits[b], no_obj_idx.expand(Q),
                     weight=self.ce_weight,
                 )
                 continue
 
             gt_classes = [s[0] for s in segments]
-            gt_masks   = torch.stack([s[1] for s in segments]).to(dev)  # [M,h,w]
+            gt_masks   = torch.stack([s[1] for s in segments]).to(dev)  # [M, h, w]
 
             # ── Hungarian matching ────────────────────────────────────────────
             cost = self._cost_matrix(
                 class_logits[b], pred_masks[b], gt_classes, gt_masks)
             row_ind, col_ind = linear_sum_assignment(
                 cost.cpu().detach().numpy())
+            matched = set(row_ind.tolist())
+            num_matched += len(row_ind)
 
-            matched     = set(row_ind.tolist())
-            batch_loss  = class_logits.new_tensor(0.0)
-
-            # ── Matched-pair loss ─────────────────────────────────────────────
+            # ── Classification loss (official: single CE over all queries) ────
+            # Build a target-class vector: matched → GT class, rest → no-object.
+            tgt_classes = torch.full((Q,), self.num_classes,
+                                     dtype=torch.long, device=dev)
             for r, c in zip(row_ind, col_ind):
-                tgt = torch.tensor([gt_classes[c]], dtype=torch.long, device=dev)
+                tgt_classes[r] = gt_classes[c]
+            total_loss = total_loss + self.weight_class * F.cross_entropy(
+                class_logits[b], tgt_classes, weight=self.ce_weight,
+            )
 
-                # Classification
-                batch_loss = batch_loss + self.weight_class * F.cross_entropy(
-                    class_logits[b, r].unsqueeze(0), tgt,
-                    weight=self.ce_weight,
-                )
-                # Mask – balanced binary cross-entropy.
-                # pos_weight = neg_pixels/pos_pixels equalises the gradient signal
-                # for strongly imbalanced masks (background ~95% positive) so the
-                # model receives equally-strong gradients to suppress the mask at
-                # foreground pixels as to activate it at background pixels.
-                # Clamped to [0.05, 20] to prevent extreme values for tiny masks.
-                g_flat   = gt_masks[c].flatten()
-                pos_px   = g_flat.sum().clamp(min=1)
-                neg_px   = (g_flat.numel() - pos_px).clamp(min=1)
-                bce_pw   = (neg_px / pos_px).clamp(0.05, 20.0)
-                batch_loss = batch_loss + self.weight_mask * F.binary_cross_entropy_with_logits(
-                    pred_masks[b, r], gt_masks[c],
-                    pos_weight=bce_pw,
-                )
-                # Mask – Dice
-                p_sig = pred_masks[b, r].sigmoid().flatten()
-                g     = g_flat
-                dice  = 1.0 - (2*(p_sig*g).sum() + 1e-5) / (p_sig.sum() + g.sum() + 1e-5)
-                batch_loss = batch_loss + self.weight_dice * dice
+            # ── Collect matched mask pairs (focal + dice computed below) ──────
+            for r, c in zip(row_ind, col_ind):
+                all_pm.append(pred_masks[b, r].flatten().unsqueeze(0))  # [1, HW]
+                all_gm.append(gt_masks[c].flatten().unsqueeze(0))       # [1, HW]
 
-            # ── Unmatched queries → no-object classification only ─────────────
-            # Original MaskFormer (Cheng et al., NeurIPS 2021): unmatched queries
-            # only receive the no-object CE loss weighted by eos_coef.  No mask
-            # loss is applied to unmatched queries.  Adding a "push masks to zero"
-            # BCE term here caused training collapse because ~97/100 queries are
-            # unmatched — the gradient pressure overwhelmed the 3 matched queries
-            # and drove sigmoid(mask) → 0 for nearly all queries, making the
-            # segmap sum ≈ 0 after ~50–100 epochs.
-            unmatched = torch.tensor(
-                [q for q in range(Q) if q not in matched],
-                dtype=torch.long, device=dev)
-            if unmatched.numel() > 0:
-                no_obj_targets = no_obj_idx.expand(unmatched.numel())
-                # ce_weight[-1] = eos_coef already down-weights the no-object
-                # class; no additional scalar multiplier needed.
-                batch_loss = batch_loss + F.cross_entropy(
-                    class_logits[b][unmatched], no_obj_targets,
-                    weight=self.ce_weight,
-                )
-
-            total_loss = total_loss + batch_loss
+        # ── Mask losses: sigmoid focal + dice, normalised by num_matched ──────
+        # Matches facebookresearch/MaskFormer criterion.py loss_masks():
+        #   loss_mask = sigmoid_focal_loss(src, tgt, num_masks)
+        #   loss_dice = dice_loss(src, tgt, num_masks)
+        if all_pm:
+            n = float(max(1, num_matched))
+            pm_cat = torch.cat(all_pm, dim=0)  # [num_matched, HW]
+            gm_cat = torch.cat(all_gm, dim=0)  # [num_matched, HW]
+            total_loss = total_loss + self.weight_mask * _sigmoid_focal_loss(
+                pm_cat, gm_cat, n)
+            total_loss = total_loss + self.weight_dice * _dice_loss(
+                pm_cat, gm_cat, n)
 
         return total_loss / B
+
+    def forward(self,
+                class_logits: torch.Tensor,            # [B, Q, C+1]
+                pred_masks:   torch.Tensor,            # [B, Q, h, w]
+                anno:         torch.Tensor,            # [B, H, W]  long
+                aux_outputs:  list | None = None,      # [(cls, mask), ...] auxiliary layers
+                ) -> torch.Tensor:
+        """Compute total loss: final-layer loss + auxiliary-layer losses.
+
+        aux_outputs is a list of (class_logits, masks) from intermediate
+        transformer decoder layers (deep supervision / auxiliary losses),
+        as produced by MaskFormerFusion.forward().
+        """
+        _, _, h, w = pred_masks.shape
+
+        # Downsample annotation once to pixel-decoder resolution
+        anno_down = F.interpolate(
+            anno.float().unsqueeze(1), size=(h, w), mode='nearest'
+        ).long().squeeze(1)  # [B, h, w]
+
+        # Final-layer loss
+        total_loss = self._loss_single_output(class_logits, pred_masks, anno_down)
+
+        # Auxiliary losses (deep supervision) — same formula applied to each
+        # intermediate decoder layer output, following the official implementation.
+        if aux_outputs:
+            for aux_cls, aux_mask in aux_outputs:
+                # Aux masks may be at a different spatial resolution; re-downsample
+                _, _, ah, aw = aux_mask.shape
+                if (ah, aw) != (h, w):
+                    ad = F.interpolate(
+                        anno.float().unsqueeze(1), size=(ah, aw), mode='nearest'
+                    ).long().squeeze(1)
+                else:
+                    ad = anno_down
+                total_loss = total_loss + self._loss_single_output(
+                    aux_cls, aux_mask, ad)
+
+        return total_loss
 
 
 class MaskFormerFusion(nn.Module):
@@ -521,40 +600,30 @@ class MaskFormerFusion(nn.Module):
         pixel_features = self.pixel_decoder(features)          # [B, pd_ch, h, w]
         pixel_features = self.pixel_proj(pixel_features)       # [B, d_model, h, w]
 
-        # 3. Transformer decoder → per-query class logits + binary masks
-        class_logits, masks = self.transformer_decoder(pixel_features)
-        # class_logits : [B, Q, num_classes+1]
-        # masks        : [B, Q, h, w]  (raw dot-product logits)
+        # 3. Transformer decoder → per-layer class logits + masks (all layers)
+        all_class_logits, all_masks = self.transformer_decoder(pixel_features)
+        # each element: class_logits [B, Q, C+1], masks [B, Q, h, w]
+        class_logits = all_class_logits[-1]   # final layer
+        masks        = all_masks[-1]
+        # Auxiliary outputs from intermediate layers (for deep supervision)
+        aux_outputs = list(zip(all_class_logits[:-1], all_masks[:-1]))
 
-        # 4. Merge — MaskFormer §3.3, gated by per-query foreground probability.
+        # 4. Merge — official MaskFormer semantic_inference formula
+        #   (Cheng et al., NeurIPS 2021, mask_former_model.py):
         #
-        #   Standard formula: segmap[c] = Σ_q softmax(cls)[q,c] · sigmoid(mask)[q]
+        #     semseg[c] = Σ_q  softmax(cls_logits)[q, c]  ×  sigmoid(mask)[q]
         #
-        #   With 100 queries and ~4 GT segments (background + 3 foreground), ~96
-        #   queries are unmatched and learn to predict no-object (class num_classes).
-        #   These unmatched queries have P(no-object) ≈ 1, but their masks are
-        #   unregularized (no mask loss applied to unmatched queries), so
-        #   sigma(mask) ≈ 0.5 initially.  Without gating, 96 × 0.2 × 0.5 ≈ 9.6
-        #   would be added equally to every class channel, swamping the 4 matched
-        #   queries' contributions of ≈ 0.9 × 0.9 = 0.81 each.
-        #
-        #   Fix: weight each query's contribution by its foreground probability
-        #     fg_prob_q = 1 - P(no-object | q)
-        #   so no-object queries ('unmatched') contribute ≈ 0 to the segmap,
-        #   while the matched queries (background + foreground) contribute fully.
-        #   Note: background is NOW included in GT matching (see _build_gt),
-        #   so the background channel (class 0) receives proper positive signal
-        #   from its matched query with fg_prob ≈ 1.
-        b, _, h, w = masks.shape
-        cls_probs_full = F.softmax(class_logits, dim=-1)           # [B, Q, C+1]
-        fg_prob        = 1.0 - cls_probs_full[..., -1:]            # [B, Q, 1]
-        cls_probs      = cls_probs_full[..., :self.num_classes] * fg_prob  # [B, Q, C]
-        mask_probs     = torch.sigmoid(masks)                       # [B, Q, h, w]
-        segmap         = torch.einsum('bqc,bqhw->bchw',
-                                      cls_probs, mask_probs)        # [B, C, h, w]
+        #   The no-object column is dropped (sliced off) but NOT used to gate the
+        #   remaining class probabilities.  After training, matched queries have
+        #   P(class_c) ≈ 1 and unmatched queries have P(no-obj) ≈ 1 so their
+        #   P(class_c) ≈ 0, giving the same limiting behaviour without the extra
+        #   multiplicative factor that deviates from the paper formula.
+        cls_probs  = F.softmax(class_logits, dim=-1)[..., :self.num_classes]  # [B, Q, C]
+        mask_probs = masks.sigmoid()                                           # [B, Q, h, w]
+        segmap     = torch.einsum('bqc,bqhw->bchw', cls_probs, mask_probs)    # [B, C, h, w]
 
         # 5. Upsample to original input resolution
         segmap = F.interpolate(segmap, size=(H, W),
                                mode='bilinear', align_corners=False)
 
-        return None, segmap, class_logits, masks
+        return None, segmap, class_logits, masks, aux_outputs
