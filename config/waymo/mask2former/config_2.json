@@ -4,7 +4,7 @@
     "CLI": {"backbone": "mask2former", "mode": "lidar", "path": "./waymo_dataset/splits_clft/"},
     "General": {
         "device": "cuda:0",
-        "epochs": 100,
+        "epochs": 50,
         "batch_size": 8,
         "path_predicted_images": "output",
         "seed": 0,
