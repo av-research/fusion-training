@@ -24,13 +24,14 @@ from utils.helpers import get_model_path, get_training_uuid_from_logs
 
 
 class MaskFormerTrainingEngine(TrainingEngine):
-    """TrainingEngine subclass that uses Hungarian matching loss only.
+    """TrainingEngine subclass that uses Hungarian matching loss for both train and val.
 
     On each training step:
         total_loss = hungarian_loss(class_logits, masks, anno)
 
+    Validation uses the same Hungarian matching loss so that train/val losses are
+    directly comparable and early stopping / overfitting detection is meaningful.
     Matches the original MaskFormer training setup (Cheng et al., NeurIPS 2021).
-    Validation uses the base class CE loss on the segmap for monitoring.
     """
 
     def __init__(self, *args,
@@ -94,6 +95,57 @@ class MaskFormerTrainingEngine(TrainingEngine):
         )
         if self.scheduler is not None:
             self.scheduler.step()
+        return metrics
+
+    def validate_epoch(self, dataloader, modality, num_classes):
+        """One validation epoch with Hungarian matching loss (same as training).
+
+        Overrides the base class which used CrossEntropyLoss on the segmap.
+        Using the same loss for both train and val makes the values directly
+        comparable and allows proper overfitting / early-stopping detection.
+        """
+        from torch.amp import autocast
+        from utils.helpers import relabel_annotation
+        from tqdm import tqdm
+
+        self.model.eval()
+        accumulators = self.metrics_calc.create_accumulators(self.device)
+        valid_loss = 0.0
+
+        with torch.no_grad():
+            progress_bar = tqdm(dataloader)
+            for batch in progress_bar:
+                rgb   = batch['rgb'].to(self.device,  non_blocking=True)
+                lidar = batch['lidar'].to(self.device, non_blocking=True)
+                anno  = batch['anno'].to(self.device,  non_blocking=True)
+
+                rgb_input, lidar_input = self._prepare_inputs(rgb, lidar, modality)
+
+                with autocast('cuda'):
+                    model_outputs = self.model(rgb_input, lidar_input, modality)
+                    # model returns (None, segmap, class_logits, masks)
+                    output_seg   = model_outputs[1].squeeze(1)  # [B,C,H,W]
+                    class_logits = model_outputs[2]              # [B,Q,C+1]
+                    pred_masks   = model_outputs[3]              # [B,Q,h,w]
+
+                    anno = relabel_annotation(
+                        anno.cpu(), self.config
+                    ).squeeze(0).to(self.device)
+
+                    loss = self.hungarian_criterion(
+                        class_logits, pred_masks, anno
+                    )
+
+                self.metrics_calc.update_accumulators(
+                    accumulators, output_seg, anno, num_classes
+                )
+                valid_loss += loss.item()
+
+                progress_bar.set_description(f'Valid loss: {loss:.4f}')
+
+        metrics = self.metrics_calc.compute_epoch_metrics(
+            accumulators, valid_loss, len(dataloader)
+        )
         return metrics
 
 
