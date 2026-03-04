@@ -6,6 +6,10 @@ Design decisions (fresh set):
   - Unified LR: 8e-05 for all models (fair comparison)
   - Resize: Tiny=256 (native), Base/Large=384 (native); CLFT=384 (ViT-B/16 requires 384)
   - Epochs: Waymo=100, ZOD=200, ISEauto=200
+      * **Mask2Former uses a custom schedule**: 50 epochs on Waymo, 100 on
+        ZOD and ISEauto.
+      * **MaskFormer also uses 100 epochs** on ZOD/ISEauto (otherwise default
+        dataset setting applies).
   - batch_size=8, seed=0, warmup_epochs=10
   - Class weights match paper: bg=0.1, vehicle=10.0, sign=15.0, human=20.0
   - Mask2Former aux_weight=0.5 (as per paper)
@@ -421,6 +425,10 @@ def make_maskformer_configs(base_dir: str, ds_key: str, dry_run: bool):
                 },
                 "Dataset": dataset_block(ds_key, swin_resize),
             }
+            # override the epochs for MaskFormer on certain datasets
+            if ds_key in ("zod", "iseauto"):
+                cfg["General"]["epochs"] = 100
+
             write_config(os.path.join(folder, f"config_{idx}.json"), cfg, dry_run)
             idx += 1
 
@@ -445,6 +453,8 @@ def make_mask2former_configs(base_dir: str, ds_key: str, dry_run: bool):
                     "mode":     mode_key,
                     "path":     DATASET_META[ds_key]["cli_path"],
                 },
+                # default value derived from dataset, but Mask2Former uses
+                # a custom epoch schedule so we override it below.
                 "General": general_block(ds_key),
                 "Log": {"logdir": f"logs/{ds_key}/mask2former/config_{idx}"},
                 "Mask2Former": {
@@ -466,6 +476,11 @@ def make_mask2former_configs(base_dir: str, ds_key: str, dry_run: bool):
                 },
                 "Dataset": dataset_block(ds_key, swin_resize),
             }
+            # adjust epochs specially for Mask2Former
+            if ds_key in ("zod", "iseauto"):
+                cfg["General"]["epochs"] = 100
+            elif ds_key == "waymo":
+                cfg["General"]["epochs"] = 50
             write_config(os.path.join(folder, f"config_{idx}.json"), cfg, dry_run)
             idx += 1
 
