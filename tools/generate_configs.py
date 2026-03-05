@@ -5,7 +5,7 @@ Generate a complete, consistent set of training configs for all models × datase
 Design decisions (fresh set):
   - Unified LR: 8e-05 for all models (fair comparison)
   - Resize: Tiny=256 (native), Base/Large=384 (native); CLFT=384 (ViT-B/16 requires 384)
-  - Epochs: Waymo=100, ZOD=200, ISEauto=200
+  - Epochs: Waymo=100, ZOD=200, ISEauto=200  (CLFT uses 200 on Waymo)
       * **Mask2Former uses a custom schedule**: 50 epochs on Waymo, 100 on
         ZOD and ISEauto.
       * **MaskFormer also uses 100 epochs** on ZOD/ISEauto (otherwise default
@@ -383,6 +383,10 @@ def make_clft_configs(base_dir: str, ds_key: str, dry_run: bool):
                 },
                 "Dataset": dataset_block(ds_key, RESIZE["clft"]),
             }
+            # override epochs for CLFT on Waymo (require 200 instead of default 100)
+            if ds_key == "waymo":
+                cfg["General"]["epochs"] = 200
+
             write_config(os.path.join(folder, f"config_{idx}.json"), cfg, dry_run)
             idx += 1
 
