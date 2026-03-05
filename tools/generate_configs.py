@@ -426,7 +426,10 @@ def make_maskformer_configs(base_dir: str, ds_key: str, dry_run: bool):
                 "Dataset": dataset_block(ds_key, swin_resize),
             }
             # override the epochs for MaskFormer on certain datasets
-            if ds_key in ("zod", "iseauto"):
+            if ds_key == "waymo":
+                # new requirement: shorter schedule on Waymo
+                cfg["General"]["epochs"] = 50
+            elif ds_key in ("zod", "iseauto"):
                 cfg["General"]["epochs"] = 100
 
             write_config(os.path.join(folder, f"config_{idx}.json"), cfg, dry_run)
