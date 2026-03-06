@@ -288,12 +288,13 @@ def load_checkpoint_if_resume(config, model, optimizer, scheduler, device):
     print('Loading trained optimizer...')
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     
-    # Load scheduler state if it exists
+    start_epoch = finished_epochs + 1
+    print(f"Resuming from epoch {start_epoch} (next after {finished_epochs})")
+    # load scheduler state if available before returning
     if scheduler is not None and 'scheduler_state_dict' in checkpoint:
         print('Loading scheduler state...')
         scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    
-    return finished_epochs
+    return start_epoch
 
 
 def main():

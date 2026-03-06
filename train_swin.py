@@ -199,7 +199,9 @@ def load_checkpoint_if_resume(config, model, optimizer, device):
     print('Loading trained optimizer...')
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     
-    return finished_epochs
+    start_epoch = finished_epochs + 1
+    print(f"Resuming from epoch {start_epoch} (next after {finished_epochs})")
+    return start_epoch
 
 
 def main():
