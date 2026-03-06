@@ -383,9 +383,11 @@ def make_clft_configs(base_dir: str, ds_key: str, dry_run: bool):
                 },
                 "Dataset": dataset_block(ds_key, RESIZE["clft"]),
             }
-            # override epochs for CLFT on Waymo (require 200 instead of default 100)
+            # override epochs for CLFT
             if ds_key == "waymo":
                 cfg["General"]["epochs"] = 200
+            elif ds_key in ["zod", "iseauto"]:
+                cfg["General"]["epochs"] = 300
 
             write_config(os.path.join(folder, f"config_{idx}.json"), cfg, dry_run)
             idx += 1
