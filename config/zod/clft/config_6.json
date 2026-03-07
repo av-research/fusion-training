@@ -8,7 +8,7 @@
         "batch_size": 8,
         "path_predicted_images": "output",
         "seed": 0,
-        "resume_training": true,
+        "resume_training": false,
         "reset_lr": false,
         "early_stop_patience": 200,
         "max_epochs": 2,
