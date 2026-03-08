@@ -1,0 +1,72 @@
+{
+    "Summary": "Transfer ZOD->Waymo CLFTv2-Large Fusion",
+    "tags": ["TRANSFER", "ZOD", "WAYMO", "CLFTv2", "Large", "Fusion"],
+    "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./waymo_dataset/"},
+    "General": {
+        "device": "cuda:0",
+        "epochs": 100,
+        "batch_size": 8,
+        "path_predicted_images": "output",
+        "seed": 0,
+        "resume_training": true,
+        "reset_lr": false,
+        "transfer_learning": true,
+        "source_classes": [
+            {"name": "background", "index": 0},
+            {"name": "vehicle", "index": 1},
+            {"name": "sign", "index": 2},
+            {"name": "human", "index": 3}
+        ],
+        "early_stop_patience": 100,
+        "max_epochs": 2,
+        "model_path": "logs/zod/swin/config_9/epoch_199_2d5ee756-cc3a-4250-a44c-f7f3729b7d6d.pth"
+    },
+    "Log": {"logdir": "logs/transfer/zod_to_waymo"},
+    "SwinFusion": {
+        "emb_dims": [192, 384, 768, 1536],
+        "hooks": [0, 1, 2, 3],
+        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
+        "fusion_strategy": "residual_average",
+        "clft_lr": 2e-05,
+        "warmup_epochs": 5,
+        "patch_size": 4,
+        "reassembles": [4, 8, 16, 32],
+        "read": "ignore",
+        "resample_dim": 256,
+        "type": "segmentation",
+        "lr_momentum": 0.99,
+        "pretrained": true
+    },
+    "Dataset": {
+        "name": "waymo",
+        "dataset_root": "./waymo_dataset",
+        "train_split": "./waymo_dataset/splits_clft/train_all.txt",
+        "val_split": "./waymo_dataset/splits_clft/early_stop_valid.txt",
+        "annotation_path": "annotation",
+        "dataset_classes": [
+            {"name": "ignore", "index": 0},
+            {"name": "vehicle", "index": 1},
+            {"name": "pedestrian", "index": 2},
+            {"name": "sign", "index": 3},
+            {"name": "cyclist", "index": 4},
+            {"name": "background", "index": 5}
+        ],
+        "train_classes": [
+            {"name": "background", "index": 0, "weight": 0.5, "dataset_mapping": [0,5], "color": [0, 0, 0]},
+            {"name": "vehicle", "index": 1, "weight": 4.0, "dataset_mapping": [1], "color": [128, 0, 128]},
+            {"name": "sign", "index": 2, "weight": 10.0, "dataset_mapping": [3], "color": [255, 0, 0]},
+            {"name": "human", "index": 3, "weight": 10.0, "dataset_mapping": [2,4], "color": [0, 255, 255]}
+        ],
+        "transforms": {
+            "resize": 384,
+            "random_rotate_range": 20,
+            "p_flip": 0.5,
+            "p_crop": 0.3,
+            "p_rot": 0.4,
+            "image_mean": [0.485, 0.456, 0.406],
+            "image_std": [0.229, 0.224, 0.225],
+            "lidar_mean": [0.461, 0.288, 0.267],
+            "lidar_std": [0.115, 0.126, 0.098]
+        }
+    }
+}

@@ -179,7 +179,63 @@ def load_checkpoint_if_resume(config, model, optimizer, device):
     
     print(f'Resuming training from {model_path}')
     checkpoint = torch.load(model_path, map_location=device)
-    
+    is_transfer = config['General'].get('transfer_learning', False)
+
+    if is_transfer:
+        print('Transfer learning mode: loading backbone weights with class-aware head remapping')
+        src_state = checkpoint['model_state_dict']
+        dst_state = model.state_dict()
+
+        source_classes = config['General'].get('source_classes', [])
+        target_classes = sorted(config['Dataset']['train_classes'], key=lambda x: x['index'])
+        src_name_to_idx = {c['name']: c['index'] for c in source_classes}
+        src_num_classes = len(source_classes) if source_classes else None
+
+        filtered = {}
+        skipped = []
+        remapped = []
+
+        for k, src_v in src_state.items():
+            dst_v = dst_state.get(k)
+            if dst_v is None:
+                skipped.append(k)
+                continue
+            if src_v.shape == dst_v.shape:
+                filtered[k] = src_v
+            elif (
+                source_classes
+                and src_num_classes is not None
+                and src_v.shape[0] == src_num_classes
+                and dst_v.shape[0] == len(target_classes)
+            ):
+                # Head layer: remap each row from source class index to target class index by name
+                new_tensor = dst_v.clone()
+                for tgt_cls in target_classes:
+                    src_idx = src_name_to_idx.get(tgt_cls['name'])
+                    if src_idx is not None:
+                        new_tensor[tgt_cls['index']] = src_v[src_idx]
+                filtered[k] = new_tensor
+                remapped.append(k)
+            else:
+                skipped.append(k)
+
+        if remapped:
+            mapped_names = ', '.join(
+                f"{c['name']}(src {src_name_to_idx[c['name']]}→dst {c['index']})"
+                for c in target_classes if c['name'] in src_name_to_idx
+            )
+            new_names = [c['name'] for c in target_classes if c['name'] not in src_name_to_idx]
+            print(f"  Head layers remapped: {mapped_names}")
+            if new_names:
+                print(f"  New classes (random init): {new_names}")
+        if skipped:
+            print(f"  Skipped (unresolvable mismatch): {skipped}")
+
+        dst_state.update(filtered)
+        model.load_state_dict(dst_state)
+        model.to(device)
+        return 0
+
     if config['General']['reset_lr']:
         print('Reset the epoch to 0')
         return 0
@@ -222,8 +278,9 @@ def main():
     multiprocessing.set_start_method('spawn', force=True)
     
     # Generate or retrieve training UUID
+    is_transfer = config['General'].get('transfer_learning', False)
     vision_training_id = None
-    if config['General']['resume_training']:
+    if config['General']['resume_training'] and not is_transfer:
         # Try to get existing training_uuid and vision_training_id from logs
         training_uuid, vision_training_id = get_training_uuid_from_logs(config['Log']['logdir'])
         if training_uuid:
@@ -236,7 +293,10 @@ def main():
             print(f"New Training UUID: {training_uuid}")
     else:
         training_uuid = generate_training_uuid()
-        print(f"Training UUID: {training_uuid}")
+        if is_transfer:
+            print(f"Transfer learning - new Training UUID: {training_uuid}")
+        else:
+            print(f"Training UUID: {training_uuid}")
     
     # Setup device
     device = torch.device(config['General']['device'] 
@@ -289,7 +349,7 @@ def main():
     
     # Setup vision service
     if training_uuid:
-        if config['General']['resume_training'] and vision_training_id is None:
+        if config['General']['resume_training'] and not is_transfer and vision_training_id is None:
             # Look up existing training by UUID only if we don't have it from logs
             print("Resuming training - looking up existing training record...")
             vision_training_id = get_training_by_uuid(training_uuid)
@@ -297,8 +357,8 @@ def main():
                 print(f"Found existing training in vision service: {vision_training_id}")
             else:
                 print("Warning: Could not find existing training in vision service")
-        elif not config['General']['resume_training']:
-            # Create new training
+        elif not config['General']['resume_training'] or is_transfer:
+            # Create new training (fresh start or transfer learning)
             vision_training_id = setup_vision_service(config, training_uuid)
     
     # Load checkpoint if resuming
