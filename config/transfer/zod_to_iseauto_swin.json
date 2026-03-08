@@ -19,7 +19,7 @@
         ],
         "early_stop_patience": 100,
         "max_epochs": 2,
-        "model_path": "logs/zod/swin/config_9/checkpoints/epoch_199_2d5ee756-cc3a-4250-a44c-f7f3729b7d6d.pth"
+        "model_path": "logs/zod/swin/config_3/checkpoints/epoch_199_c963b980-3fed-452b-a905-354a555ae436.pth"
     },
     "Log": {"logdir": "logs/transfer/zod_to_iseauto"},
     "SwinFusion": {

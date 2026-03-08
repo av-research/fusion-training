@@ -19,7 +19,7 @@
         ],
         "early_stop_patience": 100,
         "max_epochs": 2,
-        "model_path": "logs/waymo/swin/config_9/checkpoints/epoch_99_d76a9862-b3c6-4142-b919-8d7246044f6d.pth"
+        "model_path": "logs/waymo/swin/config_3/checkpoints/epoch_99_55f4d474-4ea6-4c23-b910-447c8664060f.pth"
     },
     "Log": {"logdir": "logs/transfer/waymo_to_zod"},
     "SwinFusion": {
