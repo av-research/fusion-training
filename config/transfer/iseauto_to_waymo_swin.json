@@ -1,6 +1,6 @@
 {
-    "Summary": "Transfer ISEAuto->Waymo CLFTv2-Large Fusion",
-    "tags": ["TRANSFER", "ISEAUTO", "WAYMO", "CLFTv2", "Large", "Fusion"],
+    "Summary": "Transfer ISEAuto->Waymo CLFTv2-Tiny Fusion",
+    "tags": ["TRANSFER", "ISEAUTO", "WAYMO", "CLFTv2", "Tiny", "Fusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./waymo_dataset/"},
     "General": {
         "device": "cuda:0",
@@ -22,9 +22,9 @@
     },
     "Log": {"logdir": "logs/transfer/iseauto_to_waymo"},
     "SwinFusion": {
-        "emb_dims": [192, 384, 768, 1536],
+        "emb_dims": [96, 192, 384, 768],
         "hooks": [0, 1, 2, 3],
-        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
+        "model_timm": "swinv2_tiny_window16_256",
         "fusion_strategy": "residual_average",
         "clft_lr": 2e-05,
         "warmup_epochs": 5,
@@ -57,7 +57,7 @@
             {"name": "human", "index": 3, "weight": 10.0, "dataset_mapping": [2,4], "color": [0, 255, 255]}
         ],
         "transforms": {
-            "resize": 384,
+            "resize": 256,
             "random_rotate_range": 20,
             "p_flip": 0.5,
             "p_crop": 0.3,

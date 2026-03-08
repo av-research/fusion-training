@@ -1,6 +1,6 @@
 {
-    "Summary": "Transfer ISEAuto->ZOD CLFTv2-Large Fusion",
-    "tags": ["TRANSFER", "ISEAUTO", "ZOD", "CLFTv2", "Large", "Fusion"],
+    "Summary": "Transfer ISEAuto->ZOD CLFTv2-Tiny Fusion",
+    "tags": ["TRANSFER", "ISEAUTO", "ZOD", "CLFTv2", "Tiny", "Fusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./zod_dataset/"},
     "General": {
         "device": "cuda:0",
@@ -18,13 +18,13 @@
         ],
         "early_stop_patience": 100,
         "max_epochs": 2,
-        "model_path": "logs/iseauto/swin/config_9/epoch_199_395c09b3-3b03-4b0e-9a4d-cbf289bfc3fa.pth"
+        "model_path": "logs/iseauto/swin/config_9/checkpoints/epoch_199_395c09b3-3b03-4b0e-9a4d-cbf289bfc3fa.pth"
     },
     "Log": {"logdir": "logs/transfer/iseauto_to_zod"},
     "SwinFusion": {
-        "emb_dims": [192, 384, 768, 1536],
+        "emb_dims": [96, 192, 384, 768],
         "hooks": [0, 1, 2, 3],
-        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
+        "model_timm": "swinv2_tiny_window16_256",
         "fusion_strategy": "residual_average",
         "clft_lr": 2e-05,
         "warmup_epochs": 5,
@@ -57,7 +57,7 @@
             {"name": "human", "index": 3, "weight": 20.0, "dataset_mapping": [4,5], "color": [0, 255, 255]}
         ],
         "transforms": {
-            "resize": 384,
+            "resize": 256,
             "random_rotate_range": 20,
             "p_flip": 0.5,
             "p_crop": 0.3,

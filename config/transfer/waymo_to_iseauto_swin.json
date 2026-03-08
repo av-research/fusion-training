@@ -1,10 +1,10 @@
 {
-    "Summary": "Transfer Waymo->ISEAuto CLFTv2-Large Fusion",
-    "tags": ["TRANSFER", "WAYMO", "ISEAUTO", "CLFTv2", "Large", "Fusion"],
+    "Summary": "Transfer Waymo->ISEAuto CLFTv2-Tiny Fusion",
+    "tags": ["TRANSFER", "WAYMO", "ISEAUTO", "CLFTv2", "Tiny", "Fusion"],
     "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./xod_dataset/"},
     "General": {
         "device": "cuda:0",
-        "epochs": 100,
+        "epochs": 200,
         "batch_size": 8,
         "path_predicted_images": "output",
         "seed": 0,
@@ -19,13 +19,13 @@
         ],
         "early_stop_patience": 100,
         "max_epochs": 2,
-        "model_path": "logs/waymo/swin/config_9/epoch_99_d76a9862-b3c6-4142-b919-8d7246044f6d.pth"
+        "model_path": "logs/waymo/swin/config_9/checkpoints/epoch_99_d76a9862-b3c6-4142-b919-8d7246044f6d.pth"
     },
     "Log": {"logdir": "logs/transfer/waymo_to_iseauto"},
     "SwinFusion": {
-        "emb_dims": [192, 384, 768, 1536],
+        "emb_dims": [96, 192, 384, 768],
         "hooks": [0, 1, 2, 3],
-        "model_timm": "swinv2_large_window12to24_192to384_22kft1k",
+        "model_timm": "swinv2_tiny_window16_256",
         "fusion_strategy": "residual_average",
         "clft_lr": 2e-05,
         "warmup_epochs": 5,
@@ -54,7 +54,7 @@
             {"name": "human", "index": 2, "weight": 20.0, "dataset_mapping": [2], "color": [0, 255, 255]}
         ],
         "transforms": {
-            "resize": 384,
+            "resize": 256,
             "random_rotate_range": 20,
             "p_flip": 0.5,
             "p_crop": 0.3,
