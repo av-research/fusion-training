@@ -81,10 +81,10 @@ class CLFT(nn.Module):
         elif modal == 'cross_fusion':
             # Run on rgb to get RGB activations
             self.transformer_encoders(rgb)
-            activation_rgb = self.activation.copy()
+            activation_rgb = {k: v.clone() for k, v in self.activation.items()}
             # Run on lidar to get LiDAR activations
             self.transformer_encoders(lidar)
-            activation_lidar = self.activation.copy()
+            activation_lidar = {k: v.clone() for k, v in self.activation.items()}
         
         previous_stage = None
         for i in np.arange(len(self.fusions)-1, -1, -1):
