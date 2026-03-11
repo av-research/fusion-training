@@ -31,7 +31,7 @@ class Fusion(nn.Module):
         self.res_conv2 = ResidualConvUnit(resample_dim)
 
     def forward(self, rgb, lidar, previous_stage=None, modal = 'rgb'):
-        if previous_stage == None:
+        if previous_stage is None:
                 previous_stage = torch.zeros_like(rgb)
 
         if modal == 'rgb':
