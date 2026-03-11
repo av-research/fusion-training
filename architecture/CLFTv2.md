@@ -3,7 +3,7 @@
 This document sketches the high‑level architecture of the **CLFTv2** model used in the repository. It builds on the original CLFT design by making the cross‑fusion path explicit and clarifying the resampling operations in each reassembly block.
 
 ```mermaid
-flowchart LR
+flowchart TB
     %% Inputs
     subgraph Inputs
         RGB["RGB Image<br/>(3×H×W)"]

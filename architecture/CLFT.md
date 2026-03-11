@@ -3,7 +3,7 @@
 This document sketches the high‑level architecture of the **CLFT** model used in the repository. The diagram provides a mid‑level view that is suitable for both internal documentation and academic publications.
 
 ```mermaid
-flowchart LR
+flowchart TB
     %% Inputs
     subgraph Inputs
         RGB["RGB Image<br/>(3×H×W)"]
