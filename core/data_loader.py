@@ -3,13 +3,11 @@
 """
 Data input handling for visualization.
 """
-import torch
 import numpy as np
 from PIL import Image
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
 from utils.helpers import relabel_annotation
-from utils.lidar_process import open_lidar, get_unresized_lid_img_val
 
 
 class DataLoader:
@@ -21,18 +19,20 @@ class DataLoader:
         self.cam_mean = config['Dataset']['transforms']['image_mean']
         self.cam_std = config['Dataset']['transforms']['image_std']
         self._setup_lidar_normalization()
+        # create normalization transform if means/stds were set
+        if hasattr(self, 'lidar_mean') and hasattr(self, 'lidar_std') and self.lidar_mean is not None and self.lidar_std is not None:
+            self.lidar_normalize = transforms.Normalize(mean=self.lidar_mean, std=self.lidar_std)
+        else:
+            self.lidar_normalize = None
         self.resize = config['Dataset']['transforms']['resize']
     
     def _setup_lidar_normalization(self):
         """Setup dataset-specific LiDAR normalization."""
         t = self.config['Dataset']['transforms']
-        if self.dataset_name == 'iseauto':
-            self.lidar_mean = t['lidar_mean']
-            self.lidar_std  = t['lidar_std']
-        else:
-            # Use .get() for both keys so neither is accessed when absent
-            self.lidar_mean = t.get('lidar_mean') or t.get('lidar_mean_waymo')
-            self.lidar_std  = t.get('lidar_std')  or t.get('lidar_std_waymo')
+        # all datasets now use generic lidar_mean / lidar_std keys
+        # fall back to None if missing (handled later)
+        self.lidar_mean = t.get('lidar_mean')
+        self.lidar_std  = t.get('lidar_std')
     
     def load_rgb(self, image_path):
         """Load and preprocess RGB image."""
@@ -64,34 +64,18 @@ class DataLoader:
         return anno_tensor.squeeze(0)
     
     def load_lidar(self, lidar_path):
-        """Load and preprocess LiDAR data (dataset-specific)."""
-        if self.dataset_name == 'waymo':
-            return self._load_waymo_lidar(lidar_path)
-        elif self.dataset_name == 'iseauto':
-            return self._load_zod_lidar(lidar_path)  # Iseauto uses same format as ZOD
-        else:  # ZOD
-            return self._load_zod_lidar(lidar_path)
-    
-    def _load_zod_lidar(self, lidar_path):
-        """Load ZOD LiDAR from PNG projection."""
+        """Load and preprocess LiDAR data for inference/visualization.
+
+        All supported datasets use the same PNG format.  We mimic the
+        preprocessing performed by :class:`tools.dataset_png.DatasetPNG`:
+        resize the image with PIL, convert to tensor, and normalize if
+        parameters are available.
+        """
         lidar_pil = Image.open(lidar_path)
+        lidar_pil = lidar_pil.resize((self.resize, self.resize), resample=Image.BILINEAR)
         lidar_tensor = TF.to_tensor(lidar_pil)
-        
-        # For ZOD PNG data, do NOT apply normalization (matches training)
-        # The PNG values are already in [0, 1] range
-        
-        lidar_tensor = transforms.Resize((self.resize, self.resize))(lidar_tensor)
-        
+        if self.lidar_normalize is not None:
+            lidar_tensor = self.lidar_normalize(lidar_tensor)
         return lidar_tensor
     
-    def _load_waymo_lidar(self, lidar_path):
-        """Load Waymo LiDAR from PNG projection."""
-        lidar_pil = Image.open(lidar_path)
-        lidar_tensor = TF.to_tensor(lidar_pil)
-        
-        # For Waymo PNG data, do NOT apply normalization (matches training)
-        # The PNG values are already in the expected range
-        
-        lidar_tensor = transforms.Resize((self.resize, self.resize))(lidar_tensor)
-        
-        return lidar_tensor
+

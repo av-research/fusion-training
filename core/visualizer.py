@@ -92,20 +92,34 @@ class Visualizer:
         gt_relabeled = relabel_annotation(gt_anno_tensor, self.config)
         gt_relabeled = gt_relabeled.squeeze(0).squeeze(0).numpy()
         
-        # Get predictions
-        pred_labels = torch.argmax(output_seg.squeeze(), dim=0).detach().cpu().numpy()
-        pred_labels = cv2.resize(pred_labels.astype(np.float32), (w, h), 
-                                interpolation=cv2.INTER_NEAREST).astype(np.uint8)
-        
+        # Get predictions at the model's native resolution (before upsampling to original image size)
+        # output_seg is already the network output (typically 384x384).  We perform the comparison
+        # at this smaller scale so that the number of "correct" pixels matches what the metric
+        # calculation used during testing.  We will then upsample the mask for visualization.
+        pred_small = torch.argmax(output_seg.squeeze(), dim=0).detach().cpu().numpy().astype(np.uint8)
+
+        # Build a corresponding ground‑truth map at the same resolution
+        model_size = self.config['Dataset']['transforms']['resize']
+        if model_size is None:
+            # fallback to height/width if configuration is missing
+            model_size = pred_small.shape[0]
+        gt_small = cv2.resize(gt_anno, (model_size, model_size), interpolation=cv2.INTER_NEAREST)
+        gt_small_tensor = torch.from_numpy(gt_small).unsqueeze(0).long()
+        gt_small_relabeled = relabel_annotation(gt_small_tensor, self.config)
+        gt_small_relabeled = gt_small_relabeled.squeeze(0).squeeze(0).numpy().astype(np.uint8)
+
+        # Compute masks at model resolution (exclude background class 0)
+        non_bg_small = (gt_small_relabeled != 0)
+        correct_small = (pred_small == gt_small_relabeled) & non_bg_small
+        incorrect_small = (pred_small != gt_small_relabeled) & non_bg_small
+
+        # Upsample masks to original image size for saving
+        correct_mask = cv2.resize(correct_small.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+        incorrect_mask = cv2.resize(incorrect_small.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST).astype(bool)
+
         # Create comparison (green=correct, red=incorrect)
         # Note: OpenCV uses BGR format
         comparison = np.zeros((h, w, 3), dtype=np.uint8)
-        
-        # Create masks - exclude background (class 0) from comparison
-        non_background_mask = (gt_relabeled != 0)
-        correct_mask = (pred_labels == gt_relabeled) & non_background_mask
-        incorrect_mask = (pred_labels != gt_relabeled) & non_background_mask
-        
         # Green for correct, Red for incorrect, Black for background
         comparison[correct_mask] = [0, 255, 0]    # Green (BGR)
         comparison[incorrect_mask] = [0, 0, 255]  # Red (BGR)
@@ -116,13 +130,13 @@ class Visualizer:
         cv2.imwrite(compare_path, comparison)
         
         # Create correct_only - show only correctly predicted pixels on original image
+        # we already computed incorrect_mask upstream (upsampled to original size)
         correct_only_segmented = seg_resize.copy()
-        all_incorrect_mask = (pred_labels != gt_relabeled)  # All mismatches, including background
-        correct_only_segmented[all_incorrect_mask] = [0, 0, 0]
-        
+        correct_only_segmented[incorrect_mask] = [0, 0, 0]
+
         # Overlay correct predictions on original image with transparency (like overlay)
         correct_only_overlay = self._create_overlay(rgb_cv2, correct_only_segmented, alpha=0.6)
-        
+
         correct_only_path = self._get_output_path('correct_only', rgb_path)
         print(f'Saving correct_only result {idx}...')
         cv2.imwrite(correct_only_path, correct_only_overlay)
