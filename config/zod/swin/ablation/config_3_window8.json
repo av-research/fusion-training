@@ -1,0 +1,65 @@
+{
+    "Summary": "ZOD CLFTv2-Tiny Fusion (window8 ablation)",
+    "tags": ["ZOD", "CLFTv2", "Tiny", "Fusion", "Ablation"],
+    "CLI": {"backbone": "swin_fusion", "mode": "cross_fusion", "path": "./zod_dataset/"},
+    "General": {
+        "device": "cuda:0",
+        "epochs": 200,
+        "batch_size": 8,
+        "path_predicted_images": "output",
+        "seed": 0,
+        "resume_training": false,
+        "reset_lr": false,
+        "early_stop_patience": 200,
+        "max_epochs": 2,
+        "model_path": ""
+    },
+    "Log": {"logdir": "logs/zod/swin/ablation/config_3_window8"},
+    "SwinFusion": {
+        "emb_dims": [96, 192, 384, 768],
+        "hooks": [0, 1, 2, 3],
+        "model_timm": "swinv2_tiny_window8_256",
+        "fusion_strategy": "residual_average",
+        "clft_lr": 8e-05,
+        "warmup_epochs": 10,
+        "patch_size": 4,
+        "reassembles": [4, 8, 16, 32],
+        "read": "ignore",
+        "resample_dim": 256,
+        "type": "segmentation",
+        "lr_momentum": 0.99,
+        "pretrained": true
+    },
+    "Dataset": {
+        "name": "zod",
+        "dataset_root": "./zod_dataset",
+        "train_split": "./zod_dataset/train.txt",
+        "val_split": "./zod_dataset/validation.txt",
+        "annotation_path": "annotation_camera_only",
+        "dataset_classes": [
+            {"name": "background", "index": 0},
+            {"name": "ignore", "index": 1},
+            {"name": "vehicle", "index": 2},
+            {"name": "sign", "index": 3},
+            {"name": "cyclist", "index": 4},
+            {"name": "pedestrian", "index": 5}
+        ],
+        "train_classes": [
+            {"name": "background", "index": 0, "weight": 0.1, "dataset_mapping": [0, 1], "color": [0, 0, 0]},
+            {"name": "vehicle", "index": 1, "weight": 10.0, "dataset_mapping": [2], "color": [128, 0, 128]},
+            {"name": "sign", "index": 2, "weight": 17.0, "dataset_mapping": [3], "color": [255, 0, 0]},
+            {"name": "human", "index": 3, "weight": 20.0, "dataset_mapping": [4, 5], "color": [0, 255, 255]}
+        ],
+        "transforms": {
+            "resize": 256,
+            "random_rotate_range": 20,
+            "p_flip": 0.5,
+            "p_crop": 0.3,
+            "p_rot": 0.4,
+            "image_mean": [0.485, 0.456, 0.406],
+            "image_std": [0.229, 0.224, 0.225],
+            "lidar_mean": [0.253, 0.493, 0.496],
+            "lidar_std": [0.234, 0.031, 0.167]
+        }
+    }
+}
