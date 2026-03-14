@@ -40,11 +40,11 @@ Use the model‑specific training entrypoints:
   ```bash
   python train_swin.py -c config/zod/swin/config_1.json
   ```
-- **MaskFormer (ASM2Former)**
+- **MaskFormer**
   ```bash
   python train_maskformer.py -c config/zod/maskformer/config_1.json
   ```
-- **Mask2Former (ASM2Former)**
+- **Mask2Former**
   ```bash
   python train_mask2former.py -c config/zod/mask2former/config_1.json
   ```
