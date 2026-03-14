@@ -1,20 +1,18 @@
 # Fusion Training
 
-This repository contains the implementation for the paper "CLFTv2: Hierarchical Vision Transformers for Camera-LiDAR Segmentation in Autonomous Driving".
+This repository contains the implementation for the paper "CLFTv2: Efficient Camera-LiDAR Fusion for Semantic Segmentation via Hierarchical Feature Pyramids".
 
 ## Abstract
 
-Resilient semantic segmentation in autonomous driving relies on effectively fusing the complementary information from camera and LiDAR sensors. 
-While recent Transformer-based fusion architectures surpass CNNs in global context modeling, standard Vision Transformers (ViT) are hindered by quadratic computational complexity and fixed-scale processing, which limits their ability to resolve small, distant objects.
-To address these challenges, we present CLFTv2, a practical multi-modal framework that adapts the Swin Transformer architecture for camera-LiDAR fusion. 
-By leveraging shifted window attention, our approach achieves linear complexity scaling with input size, enabling scalable processing of high-resolution sensor data.
-We employ hierarchical feature pyramids and progressive fusion strategies to integrate sparse geometric features with dense semantic maps across multiple scales, specifically targeting the detection of Vulnerable Road Users (VRUs).
-Our approach is specifically designed for the 2D perspective-projection fusion paradigm, where both camera and LiDAR inputs are encoded as aligned image tensors, making it directly comparable to other projection-based fusion methods rather than to 3D voxel- or BEV-based pipelines.
-Extensive experiments on ZOD, ISEAuto, and Waymo show that CLFTv2 consistently outperforms our previous ViT-based CLFT on ZOD (53.5\% vs.\ 46.8\% mIoU) and achieves strong performance on Waymo (61.7\% mIoU), while noting that the earlier CLFT-Hybrid variant retains a 4.4-point mIoU advantage on Waymo under the same projection-fusion protocol.
-Notably, fusion yields substantial gains for safety-critical classes, reaching up to 59.7\% IoU for pedestrians on Waymo and 44.9\% on ZOD.
-Furthermore, across ZOD and Waymo our lightweight FPN-style decoder matches the accuracy of significantly heavier query-based architectures (Mask2Former) while requiring 1.4$\times$ fewer GFLOPs, 40\% less GPU memory, and achieving 2.2$\times$ higher throughput; on the cleaner ISEAuto labels Mask2Former recovers a 2\% margin, suggesting the advantage of the simpler decoder is most pronounced under noisy or sparse supervision.
-Our code and data processing pipeline are publicly released to support further research.
-
+Semantic segmentation in autonomous driving requires reliable detection of vulnerable road users (VRUs).
+We present CLFTv2, a hierarchical camera-LiDAR fusion framework built on the Swin Transformer.
+Operating under the 2D perspective-projection paradigm, CLFTv2 leverages shifted-window attention to reduce complexity and a four-stage feature pyramid to integrate multi-scale geometry.
+A lightweight FPN-style decoder fuses representations via residual convolution units and element-wise summation, eliminating the need for computationally heavy query-matching overhead.
+On the Zenseact Open Dataset (ZOD), CLFTv2-Large achieves 53.5\% mIoU versus 46.8\% for the prior ViT-based CLFT model, improving pedestrian IoU from 35.5\% to 44.9\%.
+On the Waymo Open Dataset, while CLFTv2 reaches 61.7\% mIoU, a detailed modality ablation reveals that the unrestricted global receptive field of ViT provides a stronger cross-modal fusion gain under dense LiDAR returns.
+Compared to our query-based Mask2Former adaptation built on the same Swin backbone family, CLFTv2 requires 1.4$\times$ fewer GFLOPs and achieves 2.2$\times$ higher throughput; in this benchmark it is comparable on ZOD and substantially higher on Waymo.
+Across datasets, we observe a dataset-dependent precision-recall split: CLFTv2 variants tend to maximize pedestrian recall, while precision leadership varies by dataset and model family.
+Source code is publicly available.
 
 ## Setup Virtual Environment
 
