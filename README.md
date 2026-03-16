@@ -4,14 +4,14 @@ This repository contains the implementation for the paper "CLFTv2: Efficient Cam
 
 ## Abstract
 
-Semantic segmentation in autonomous driving requires reliable detection of vulnerable road users (VRUs).
-We present CLFTv2, a hierarchical camera-LiDAR fusion framework built on the Swin Transformer.
-Operating under the 2D perspective-projection paradigm, CLFTv2 leverages shifted-window attention to reduce complexity and a four-stage feature pyramid to integrate multi-scale geometry.
-A lightweight FPN-style decoder fuses representations via residual convolution units and element-wise summation, eliminating the need for computationally heavy query-matching overhead.
-On the Zenseact Open Dataset (ZOD), CLFTv2-Large achieves 53.5\% mIoU versus 46.8\% for the prior ViT-based CLFT model, improving pedestrian IoU from 35.5\% to 44.9\%.
-On the Waymo Open Dataset, while CLFTv2 reaches 61.7\% mIoU, a detailed modality ablation reveals that the unrestricted global receptive field of ViT provides a stronger cross-modal fusion gain under dense LiDAR returns.
-Compared to our query-based Mask2Former adaptation built on the same Swin backbone family, CLFTv2 requires 1.4$\times$ fewer GFLOPs and achieves 2.2$\times$ higher throughput; in this benchmark it is comparable on ZOD and substantially higher on Waymo.
-Across datasets, we observe a dataset-dependent precision-recall split: CLFTv2 variants tend to maximize pedestrian recall, while precision leadership varies by dataset and model family.
+Semantic segmentation for autonomous driving requires reliable detection of vulnerable road users (VRUs) despite severe class imbalance and modality limitations.
+We introduce CLFTv2, a hierarchical camera–LiDAR fusion framework that replaces global ViT attention with a Swin‑based multi‑scale encoder and a lightweight FPN‑style residual decoder.
+Operating fully in the 2D perspective‑projection domain, CLFTv2 integrates multi‑scale geometric cues through shifted‑window attention and per‑scale residual fusion, eliminating the computational overhead of query‑matching decoders.
+Across three driving datasets, CLFTv2 consistently improves VRU recall while maintaining competitive precision.
+On ZOD, CLFTv2‑Large achieves 53.5\% mIoU, improving pedestrian IoU from 35.5\% to 44.9\% over the prior CLFT model.
+On Waymo, CLFTv2 reaches 61.7\% mIoU, and a modality‑isolation study reveals that ViT’s global receptive field yields stronger cross‑modal gains under dense LiDAR returns.
+Compared to a Swin‑based Mask2Former adaptation, CLFTv2 requires 1.4× fewer GFLOPs and delivers 2.2× higher throughput, while achieving comparable or superior accuracy depending on dataset density and annotation quality.
+These results demonstrate that hierarchical local‑attention fusion provides an efficient and scalable alternative to global‑attention and query‑based decoders for real‑time autonomous driving perception. 
 Source code is publicly available.
 
 ## Setup Virtual Environment
@@ -97,11 +97,7 @@ Each benchmark script accepts the same `-c` syntax as the trainers and testers.
 
 ## Dataset
 
-This project uses the Zenseact Open Dataset (ZOD), the Zenseact Iseauto dataset and the Waymo Open Dataset.
-
-### Dataset Download
-
-Datasets are centrally hosted at [https://app.visin.eu/datasets](https://app.visin.eu/datasets). After logging in you'll find links for:
+Datasets are hosted at [https://app.visin.eu/datasets](https://app.visin.eu/datasets), where you'll find links for:
 
 - **ZOD** – original frames plus SAM-generated semantic masks
 - **Iseauto** – manually annotated frames for the autonomous vehicle platform
