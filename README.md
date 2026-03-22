@@ -4,14 +4,14 @@ This repository contains the implementation for the paper "CLFTv2: Efficient Cam
 
 ## Abstract
 
-Semantic segmentation for autonomous driving requires reliable detection of vulnerable road users (VRUs) despite severe class imbalance and modality limitations.
-We introduce CLFTv2, a hierarchical camera–LiDAR fusion framework that replaces global ViT attention with a Swin‑based multi‑scale encoder and a lightweight FPN‑style residual decoder.
-Operating fully in the 2D perspective‑projection domain, CLFTv2 integrates multi‑scale geometric cues through shifted‑window attention and per‑scale residual fusion, eliminating the computational overhead of query‑matching decoders.
-Across three driving datasets, CLFTv2 consistently improves VRU recall while maintaining competitive precision.
+Semantic segmentation for autonomous driving requires reliable detection of vulnerable road users (VRUs) despite heavy class imbalance.
+We introduce CLFTv2, a hierarchical camera-LiDAR fusion framework replacing global ViT attention with a Swin-based multi-scale encoder and a lightweight FPN-style residual decoder.
+Operating in the 2D perspective domain, CLFTv2 integrates multi-scale geometric cues through shifted-window attention and per-scale residual fusion, avoiding the computational overhead of query-matching decoders.
+Across three driving datasets, CLFTv2 consistently improves VRU recall.
 On ZOD, CLFTv2‑Large achieves 53.5\% mIoU, improving pedestrian IoU from 35.5\% to 44.9\% over the prior CLFT model.
-On Waymo, CLFTv2 reaches 61.7\% mIoU, and a modality‑isolation study reveals that ViT’s global receptive field yields stronger cross‑modal gains under dense LiDAR returns.
-Compared to a Swin‑based Mask2Former adaptation, CLFTv2 requires 1.4× fewer GFLOPs and delivers 2.2× higher throughput, while achieving comparable or superior accuracy depending on dataset density and annotation quality.
-These results demonstrate that hierarchical local‑attention fusion provides an efficient and scalable alternative to global‑attention and query‑based decoders for real‑time autonomous driving perception. 
+On Waymo, CLFTv2 reaches 61.7\% mIoU. Additionally, a modality-isolation study suggests ViT's global receptive field yields stronger fusion gains only under dense LiDAR returns.
+Compared to a Swin-based Mask2Former adaptation, CLFTv2 requires 1.4× fewer GFLOPs and delivers 2.2× higher throughput, while achieving comparable overall accuracy.
+These results demonstrate that hierarchical local-attention fusion offers an efficient, scalable alternative to global-attention and query-based decoders for real-time perception. 
 Source code is publicly available.
 
 ## Setup Virtual Environment
