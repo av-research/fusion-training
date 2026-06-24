@@ -202,16 +202,11 @@ def setup_dataset(config, weather_condition=None):
             'snow': 'test_snow.txt'
         }
         if weather_condition in weather_file_map:
-            # Check dataset name to determine path
-            dataset_name = config['Dataset'].get('name', 'zod')
-            if dataset_name == 'waymo':
-                base_path = "./waymo_dataset/splits_clft"
-            elif dataset_name == 'iseauto':
-                base_path = "./xod_dataset"
-            else:
-                base_path = "./zod_dataset"
-                
-            config['Dataset']['val_split'] = f"{base_path}/{weather_file_map[weather_condition]}"
+            # Resolve weather splits from the same directory the config's
+            # val_split lives in, so testing uses the same partition (and the
+            # matching annotations) the model was trained/validated against.
+            base_path = os.path.dirname(config['Dataset']['val_split'])
+            config['Dataset']['val_split'] = os.path.join(base_path, weather_file_map[weather_condition])
         else:
             print(f"Warning: Unknown weather condition {weather_condition}, using default val_split")
 

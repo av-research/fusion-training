@@ -1,11 +1,11 @@
 {
-    "Summary": "VLM CLFTv2-Base LIDAR - annotation_camera_only (Ground-truth manual annotations on clean partition) [GT]",
+    "Summary": "VLM CLFTv2-Base LIDAR - annotation_gt (Ground-truth manual annotations on clean partition) [GT]",
     "tags": [
         "VLM",
         "CLFTv2",
         "Base",
         "LIDAR",
-        "annotation_camera_only",
+        "annotation_gt",
         "gt"
     ],
     "CLI": {
@@ -26,7 +26,7 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-base/gt/camera_only_lidar"
+        "logdir": "logs/vlm/clftv2-base/gt/gt_lidar"
     },
     "SwinFusion": {
         "model_timm": "swinv2_base_window16_256",

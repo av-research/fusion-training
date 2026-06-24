@@ -171,14 +171,19 @@ def main():
     with open(args.config, 'r') as f:
         config = json.load(f)
 
-    # Set default path based on dataset if not provided
+    # Default to the visualizations list next to the config's val_split, so the
+    # frames come from the same partition (and have the matching annotations)
+    # the model was trained/validated against.
     if args.path is None:
-        if config['Dataset']['name'] == 'waymo':
-            args.path = 'waymo_dataset/splits_clft/visualizations.txt'
-        elif config['Dataset']['name'] == 'iseauto':
-            args.path = 'xod_dataset/visualization.txt'
-        else:
-            args.path = 'zod_dataset/visualizations.txt'
+        split_dir = os.path.dirname(config['Dataset']['val_split'])
+        # Accept either filename spelling (iseauto/xod uses the singular form).
+        candidates = ['visualizations.txt', 'visualization.txt']
+        args.path = next(
+            (os.path.join(split_dir, name)
+             for name in candidates
+             if os.path.exists(os.path.join(split_dir, name))),
+            os.path.join(split_dir, candidates[0]),
+        )
     print(f"Using visualization list: {args.path}")
 
     # Setup device

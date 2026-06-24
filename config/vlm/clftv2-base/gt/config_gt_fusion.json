@@ -1,16 +1,16 @@
 {
-    "Summary": "VLM CLFTv2-Base RGB - annotation_camera_only (Ground-truth manual annotations on clean partition) [GT]",
+    "Summary": "VLM CLFTv2-Base CrossFusion - annotation_gt (Ground-truth manual annotations on clean partition) [GT]",
     "tags": [
         "VLM",
         "CLFTv2",
         "Base",
-        "RGB",
-        "annotation_camera_only",
+        "CrossFusion",
+        "annotation_gt",
         "gt"
     ],
     "CLI": {
         "backbone": "swin_fusion",
-        "mode": "rgb",
+        "mode": "cross_fusion",
         "path": "/run/media/tom/ml/zod_temp/"
     },
     "General": {
@@ -26,7 +26,7 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-base/gt/camera_only_rgb"
+        "logdir": "logs/vlm/clftv2-base/gt/gt_fusion"
     },
     "SwinFusion": {
         "model_timm": "swinv2_base_window16_256",
