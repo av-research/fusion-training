@@ -1,15 +1,16 @@
 {
-    "Summary": "VLM CLFTv2-Tiny RGB - annotation_with_bypass (ablation: skip BBox VLM when \u03b1 \u2265 \u03c4_skip)",
+    "Summary": "VLM CLFTv2-Base CrossFusion - annotation_raw_sam (No triage — SAM pseudo-labels unchanged) [VLM-independent baseline]",
     "tags": [
         "VLM",
         "CLFTv2",
-        "Tiny",
-        "RGB",
-        "annotation_with_bypass"
+        "Base",
+        "CrossFusion",
+        "annotation_raw_sam",
+        "shared"
     ],
     "CLI": {
         "backbone": "swin_fusion",
-        "mode": "rgb",
+        "mode": "cross_fusion",
         "path": "/run/media/tom/ml/zod_temp/"
     },
     "General": {
@@ -25,14 +26,15 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-tiny/qwen/with_bypass"
+        "logdir": "logs/vlm/clftv2-base/shared/raw_sam_fusion"
     },
     "SwinFusion": {
+        "model_timm": "swinv2_base_window16_256",
         "emb_dims": [
-            96,
-            192,
-            384,
-            768
+            128,
+            256,
+            512,
+            1024
         ],
         "hooks": [
             0,
@@ -40,9 +42,7 @@
             2,
             3
         ],
-        "model_timm": "swinv2_tiny_window16_256",
         "fusion_strategy": "residual_average",
-        "clft_lr": 8e-05,
         "warmup_epochs": 10,
         "patch_size": 4,
         "reassembles": [
@@ -55,14 +55,15 @@
         "resample_dim": 256,
         "type": "segmentation",
         "lr_momentum": 0.99,
-        "pretrained": true
+        "pretrained": true,
+        "clft_lr": 8e-05
     },
     "Dataset": {
         "name": "zod",
         "dataset_root": "/run/media/tom/ml/zod_temp",
         "train_split": "/run/media/tom/ml/zod_temp/splits_flagged/train.txt",
         "val_split": "/run/media/tom/ml/zod_temp/splits_flagged/validation.txt",
-        "annotation_path": "vlm/qwen2.5vl_72b/annotation_with_bypass",
+        "annotation_path": "vlm/llava_34b/annotation_raw_sam",
         "dataset_classes": [
             {
                 "name": "background",

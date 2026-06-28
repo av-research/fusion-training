@@ -1,16 +1,16 @@
 {
-    "Summary": "VLM CLFTv2-Tiny RGB - annotation_swin_only (ablation: Swin threshold, no VLM) [LLaVA-1.6-34B]",
+    "Summary": "VLM CLFTv2-Base CrossFusion - annotation_swin_only (Swin agreement threshold only, no VLM) [VLM-independent]",
     "tags": [
         "VLM",
         "CLFTv2",
-        "Tiny",
-        "RGB",
+        "Base",
+        "CrossFusion",
         "annotation_swin_only",
-        "llava_34b"
+        "shared"
     ],
     "CLI": {
         "backbone": "swin_fusion",
-        "mode": "rgb",
+        "mode": "cross_fusion",
         "path": "/run/media/tom/ml/zod_temp/"
     },
     "General": {
@@ -26,14 +26,15 @@
         "model_path": ""
     },
     "Log": {
-        "logdir": "logs/vlm/clftv2-tiny/llava/swin_only"
+        "logdir": "logs/vlm/clftv2-base/shared/swin_only_fusion"
     },
     "SwinFusion": {
+        "model_timm": "swinv2_base_window16_256",
         "emb_dims": [
-            96,
-            192,
-            384,
-            768
+            128,
+            256,
+            512,
+            1024
         ],
         "hooks": [
             0,
@@ -41,9 +42,7 @@
             2,
             3
         ],
-        "model_timm": "swinv2_tiny_window16_256",
         "fusion_strategy": "residual_average",
-        "clft_lr": 8e-05,
         "warmup_epochs": 10,
         "patch_size": 4,
         "reassembles": [
@@ -56,7 +55,8 @@
         "resample_dim": 256,
         "type": "segmentation",
         "lr_momentum": 0.99,
-        "pretrained": true
+        "pretrained": true,
+        "clft_lr": 8e-05
     },
     "Dataset": {
         "name": "zod",
