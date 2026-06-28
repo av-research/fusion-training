@@ -23,7 +23,7 @@
         "reset_lr": true,
         "early_stop_patience": 200,
         "max_epochs": 2,
-        "model_path": "<FILL: logs/vlm/clftv2-base/llava/raw_sam_fusion/checkpoints/best.pth>",
+        "model_path": "logs/vlm/clftv2-base/shared/raw_sam_fusion/checkpoints/epoch_180_09271a0d-f76b-4327-a916-e5460cfe1c6d.pth",
         "transfer_learning": true,
         "source_classes": [
             {
