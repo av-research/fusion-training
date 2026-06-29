@@ -284,7 +284,7 @@ def general_block(ds_key: str) -> dict:
         "resume_training":      False,
         "reset_lr":             False,
         "early_stop_patience":  200,
-        "max_epochs":           2,
+        "max_checkpoints":      2,
         "model_path":           "",
     }
 

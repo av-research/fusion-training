@@ -12,7 +12,7 @@
         "reset_lr": false,
         "create_new_training": true,
         "early_stop_patience": 200,
-        "max_epochs": 1,
+        "max_checkpoints": 1,
         "model_path": ""
     },
     "Log": {"logdir": "./logs/ensemble/zod_ensemble/"},

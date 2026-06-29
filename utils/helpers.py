@@ -288,7 +288,7 @@ def manage_checkpoints_by_miou(config, log_dir):
     
     Only deletes .pth checkpoint files, preserving JSON files for analysis and testing.
     """
-    max_checkpoints = config['General'].get('max_epochs', 10)  # Default to 10 if not specified
+    max_checkpoints = config['General'].get('max_checkpoints', 10)
     import glob
     import os
     import json

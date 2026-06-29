@@ -1,5 +1,5 @@
 {
-    "Summary": "iSEAuto CLFTv2-Base CrossFusion \u2014 init from ZOD swin+disc (no VLM) checkpoint (best overall, 50.6 mIoU)",
+    "Summary": "iSEAuto CLFTv2-Tiny CrossFusion \u2014 init from ZOD swin+disc (no VLM) tiny checkpoint, lr=1e-5",
     "tags": [
         "iSEAuto",
         "CLFTv2",
@@ -22,7 +22,7 @@
         "resume_training": false,
         "reset_lr": true,
         "early_stop_patience": 200,
-        "max_epochs": 2,
+        "max_checkpoints": 2,
         "model_path": "logs/vlm/clftv2-base/shared/swin_discovery_noVLM_fusion/checkpoints/epoch_185_b3f6040f-fa62-42b6-9e67-7b491be34067.pth",
         "transfer_learning": true,
         "source_classes": [
@@ -49,10 +49,10 @@
     },
     "SwinFusion": {
         "emb_dims": [
-            128,
-            256,
-            512,
-            1024
+            96,
+            192,
+            384,
+            768
         ],
         "hooks": [
             0,
@@ -60,7 +60,7 @@
             2,
             3
         ],
-        "model_timm": "swinv2_base_window16_256",
+        "model_timm": "swinv2_tiny_window16_256",
         "fusion_strategy": "residual_average",
         "clft_lr": 8e-05,
         "warmup_epochs": 10,

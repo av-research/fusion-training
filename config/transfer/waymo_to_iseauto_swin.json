@@ -18,7 +18,7 @@
             {"name": "human", "index": 3}
         ],
         "early_stop_patience": 100,
-        "max_epochs": 2,
+        "max_checkpoints": 2,
         "model_path": "logs/waymo/swin/config_3/checkpoints/epoch_99_55f4d474-4ea6-4c23-b910-447c8664060f.pth"
     },
     "Log": {"logdir": "logs/transfer/waymo_to_iseauto"},

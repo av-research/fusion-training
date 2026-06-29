@@ -17,7 +17,7 @@
             {"name": "human", "index": 2}
         ],
         "early_stop_patience": 100,
-        "max_epochs": 2,
+        "max_checkpoints": 2,
         "model_path": "logs/iseauto/swin/config_3/checkpoints/epoch_199_92f1584f-c858-4553-bc26-260a7d36067a.pth"
     },
     "Log": {"logdir": "logs/transfer/iseauto_to_zod"},
