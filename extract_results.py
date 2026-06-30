@@ -8,6 +8,7 @@ Usage:
     python extract_results.py --group shared llava      # specific groups
     python extract_results.py --table weather           # weather breakdown
     python extract_results.py --table modality          # modality ablation
+    python extract_results.py --table agent_performance # agent signal agreement
     python extract_results.py --table all               # every table
     python extract_results.py --format csv              # CSV output
 """
@@ -17,6 +18,10 @@ import json
 from pathlib import Path
 
 LOGS_ROOT = Path("logs/vlm/clftv2-base")
+
+# VLM pipeline results (frame_*.json written by process_frames.py)
+VLM_RESULTS_ROOT = Path("/run/media/tom/ml/zod_temp/vlm")
+VLM_TAGS = {"llava": "llava_34b", "qwen": "qwen2.5vl_72b"}
 
 CONDITIONS = ["day_fair", "day_rain", "night_fair", "night_rain", "snow"]
 CLASSES = ["vehicle", "sign", "human"]
@@ -134,6 +139,44 @@ def _extract_classes_overall(result: dict) -> dict:
     return out
 
 
+def _fw_iou_from_aggregated_cm(result: dict) -> float:
+    """
+    Compute fw-IoU from the sum of per-condition confusion matrices.
+
+    The stored overall.fw_iou is a macro-average of per-condition values, which
+    is incorrect for a frequency-weighted metric: different conditions have different
+    frame counts, so averaging discards the global pixel distribution.
+    Summing the confusion matrices first gives the correct global weighting.
+    Background (class 0) is excluded to match per-condition fw_iou computation.
+    """
+    import numpy as np
+    cm = None
+    for cond in CONDITIONS:
+        cond_cm = (result["test_results"]
+                   .get(cond, {})
+                   .get("overall", {})
+                   .get("confusion_matrix"))
+        if cond_cm is None:
+            continue
+        cond_cm = np.array(cond_cm, dtype=float)
+        cm = cond_cm if cm is None else cm + cond_cm
+    if cm is None:
+        return float("nan")
+    n = cm.shape[0]
+    ious, freqs = [], []
+    for i in range(1, n):  # skip background (class 0)
+        tp = cm[i, i]
+        fp = cm[:, i].sum() - tp
+        fn = cm[i, :].sum() - tp
+        denom = tp + fp + fn
+        ious.append(float(tp / denom) if denom > 0 else 0.0)
+        freqs.append(float(cm[i, :].sum()))
+    total_fg = sum(freqs)
+    if total_fg == 0:
+        return float("nan")
+    return sum(freqs[i] / total_fg * ious[i] for i in range(len(ious)))
+
+
 def get_overall_metrics(result: dict) -> dict:
     """Return overall mIoU, per-class IoU, and fw_iou for a result."""
     overall = result["test_results"].get("overall", {})
@@ -141,7 +184,7 @@ def get_overall_metrics(result: dict) -> dict:
     return {
         **class_avg,
         "mIoU":   overall.get("mIoU_foreground", float("nan")),
-        "fw_iou": overall.get("fw_iou", float("nan")),
+        "fw_iou": _fw_iou_from_aggregated_cm(result),
     }
 
 
@@ -328,6 +371,139 @@ def print_modality(results: dict, fmt_csv: bool = False) -> None:
                       f"{vals[3]:>7}{vals[4]:>8}")
 
 
+# ── Agent performance ──────────────────────────────────────────────────────────
+
+def _load_agent_records(tag: str) -> dict[str, dict]:
+    """Load all frame_*.json files for a VLM run tag. Returns {frame_id: data}."""
+    results_dir = VLM_RESULTS_ROOT / tag / "results"
+    if not results_dir.exists():
+        return {}
+    out = {}
+    for f in sorted(results_dir.glob("frame_*.json")):
+        data = json.loads(f.read_text())
+        out[data["frame_id"]] = data
+    return out
+
+
+def _pr(tp: int, fp: int, tn: int, fn: int) -> dict:
+    n = tp + fp + tn + fn
+    acc  = (tp + tn) / n          if n           else float("nan")
+    prec = tp / (tp + fp)         if (tp + fp)   else float("nan")
+    rec  = tp / (tp + fn)         if (tp + fn)   else float("nan")
+    f1   = 2*prec*rec/(prec+rec)  if (prec+rec)  else float("nan")
+    return {"acc": acc, "prec": prec, "rec": rec, "f1": f1, "n": n}
+
+
+def compute_agent_performance() -> dict:
+    """
+    Compute agent signal agreement statistics using Swin quality as the reference.
+
+    Reference positive = swin_agreement >= per-class swin_q_threshold (stored per mask).
+    Swin scores and LiDAR consistency are VLM-independent, so values from the LLaVA
+    run are used as the shared reference.  BBox verdicts differ per VLM.
+    """
+    llava = _load_agent_records(VLM_TAGS["llava"])
+    qwen  = _load_agent_records(VLM_TAGS["qwen"])
+
+    if not llava:
+        return {}
+
+    counters: dict[str, dict] = {
+        "bbox_llava":   {"tp": 0, "fp": 0, "tn": 0, "fn": 0},
+        "bbox_qwen":    {"tp": 0, "fp": 0, "tn": 0, "fn": 0},
+        "consistency":  {"tp": 0, "fp": 0, "tn": 0, "fn": 0},
+    }
+    cross = {"agree": 0, "total": 0}
+
+    common_frames = set(llava) & set(qwen)
+    for fid in sorted(common_frames):
+        l_masks = {m["mask_id"]: m for m in llava[fid]["masks"]}
+        q_masks = {m["mask_id"]: m for m in qwen[fid]["masks"]}
+
+        for mid in set(l_masks) & set(q_masks):
+            lm = l_masks[mid]
+            qm = q_masks[mid]
+
+            sc = lm.get("scores", {})
+            swin_score = sc.get("swin_agreement")
+            if swin_score is None:
+                continue
+            swin_ref = swin_score >= sc.get("swin_q_threshold", 0.30)
+
+            def _tally(key: str, pred_pos: bool) -> None:
+                c = counters[key]
+                if swin_ref and pred_pos:       c["tp"] += 1
+                elif not swin_ref and pred_pos: c["fp"] += 1
+                elif swin_ref:                  c["fn"] += 1
+                else:                           c["tn"] += 1
+
+            bbox_l = lm["agents"].get("bbox")
+            if bbox_l is not None:
+                _tally("bbox_llava", bbox_l == "valid")
+
+            bbox_q = qm["agents"].get("bbox")
+            if bbox_q is not None:
+                _tally("bbox_qwen", bbox_q == "valid")
+
+            cons = lm["agents"].get("consistency")
+            if cons is not None:
+                _tally("consistency", cons == "pass")
+
+            if bbox_l is not None and bbox_q is not None:
+                cross["total"] += 1
+                if (bbox_l == "valid") == (bbox_q == "valid"):
+                    cross["agree"] += 1
+
+    cvl = cross["agree"] / cross["total"] if cross["total"] else float("nan")
+    return {
+        "metrics": {k: _pr(**v) for k, v in counters.items()},
+        "cross_vlm_agreement": cvl,
+        "cross_vlm_total": cross["total"],
+        "n_frames": len(common_frames),
+    }
+
+
+def print_agent_performance(fmt_csv: bool = False) -> None:
+    stats = compute_agent_performance()
+    if not stats:
+        print("# No agent results found — check VLM_RESULTS_ROOT paths")
+        return
+
+    m   = stats["metrics"]
+    cvl = stats["cross_vlm_agreement"]
+
+    AGENT_LABELS = {
+        "bbox_llava":  "BBox VLM (LLaVA-1.6-34B)",
+        "bbox_qwen":   "BBox VLM (Qwen2.5-VL-72B)",
+        "consistency": "LiDAR consistency (det.)",
+    }
+
+    def fv(v: float) -> str:
+        return "  --" if v != v else f"{v*100:5.1f}"
+
+    if fmt_csv:
+        print("Agent,Acc,Prec,Rec,F1,N")
+        for key, label in AGENT_LABELS.items():
+            d = m[key]
+            print(f"{label},{fv(d['acc'])},{fv(d['prec'])},{fv(d['rec'])},{fv(d['f1'])},{d['n']}")
+        print(f"Cross-VLM BBox agreement,{fv(cvl)},,,{stats['cross_vlm_total']}")
+        return
+
+    col_w = 30
+    print("\n── Agent signal agreement (vs Swin quality reference) ────────────────────")
+    print(f"  Reference: Swin quality 'good' = swin_agreement ≥ per-class τ_q")
+    print(f"  Frames: {stats['n_frames']:,}  |  Positive = mask passes Swin quality check")
+    print()
+    print(f"  {'Agent':<{col_w}}  {'Acc':>6}  {'Prec':>6}  {'Rec':>6}  {'F1':>6}  {'N':>8}")
+    print("  " + "-" * (col_w + 38))
+    for key, label in AGENT_LABELS.items():
+        d = m[key]
+        print(f"  {label:<{col_w}}  {fv(d['acc']):>6}  {fv(d['prec']):>6}"
+              f"  {fv(d['rec']):>6}  {fv(d['f1']):>6}  {d['n']:>8,}")
+    print()
+    print(f"  Cross-VLM BBox agreement: {fv(cvl)}%  (n={stats['cross_vlm_total']:,})")
+
+
 # ── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -335,7 +511,7 @@ def main() -> None:
     parser.add_argument("--group", nargs="+", default=["shared", "llava", "qwen"],
                         help="Log groups to include (default: shared llava qwen)")
     parser.add_argument("--table", default="ablation",
-                        choices=["ablation", "weather", "modality", "all"],
+                        choices=["ablation", "weather", "modality", "agent_performance", "all"],
                         help="Which table to print (default: ablation)")
     parser.add_argument("--format", dest="fmt", default="table",
                         choices=["table", "csv"],
@@ -355,6 +531,8 @@ def main() -> None:
         print_weather(results, csv)
     if args.table in ("modality", "all"):
         print_modality(results, csv)
+    if args.table in ("agent_performance", "all"):
+        print_agent_performance(csv)
 
 
 if __name__ == "__main__":
